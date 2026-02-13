@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oral Exam Tutor — Prep Smarter</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">Oral Exam Tutor</h1>
+      <p class="tagline">Practice like the real thing</p>
+      <nav class="nav" aria-label="Main">
+        <button type="button" class="nav-btn" data-route="home">Home</button>
+        <button type="button" class="nav-btn" data-route="subjects">Subjects</button>
+        <button type="button" class="nav-btn" data-route="performance">Performance</button>
+        <button type="button" class="nav-btn" data-route="weak">Weak Areas</button>
+        <button type="button" class="nav-btn" data-route="settings">Settings</button>
+      </nav>
+      <div class="progress-bar" aria-hidden="true">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Home / Dashboard -->
+      <section class="screen screen-home" id="screenHome" data-route="home">
+        <div class="home-sections">
+          <section class="home-section home-continue" id="homeContinue">
+            <h2 class="section-title">Continue Last Session</h2>
+            <div class="continue-card" id="continueCard">
+              <p class="continue-empty" id="continueEmpty">No session in progress</p>
+              <div class="continue-content" id="continueContent" hidden>
+                <p class="continue-topic" id="continueTopic"></p>
+                <p class="continue-progress" id="continueProgress"></p>
+                <button type="button" class="btn btn-primary" id="btnContinueSession">Continue</button>
+              </div>
+            </div>
+          </section>
+          <section class="home-section home-summary">
+            <p class="summary-text">Use the navigation above to access Subjects, Performance, Weak Areas, and Settings.</p>
+            <div class="home-quick-links">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToSubjects">Go to Subjects</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToPerformance">View Performance</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToWeak">Review Weak Areas</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Subjects (full screen) -->
+      <section class="screen screen-subjects" id="screenSubjects" data-route="subjects">
+        <h2 class="screen-title">Subjects</h2>
+        <div class="session-settings">
+          <label class="setting">
+            <span>Think time (sec)</span>
+            <input type="number" id="thinkTime" value="30" min="5" max="120" step="5" />
+          </label>
+          <label class="setting">
+            <span>Answer time (sec)</span>
+            <input type="number" id="answerTime" value="120" min="30" max="600" step="30" />
+          </label>
+        </div>
+        <div class="subject-grid" id="subjectGrid"></div>
+      </section>
+
+      <!-- Performance (full screen) -->
+      <section class="screen screen-performance" id="screenPerformance" data-route="performance">
+        <h2 class="screen-title">Recent Performance</h2>
+        <div class="performance-card-full" id="performanceCardFull">
+          <p class="performance-empty" id="performanceEmpty">Complete a session to see your stats</p>
+          <div class="performance-content-full" id="performanceContentFull" hidden>
+            <div class="performance-stats" id="performanceStats"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Weak Areas (full screen) -->
+      <section class="screen screen-weak" id="screenWeak" data-route="weak">
+        <h2 class="screen-title">Saved Weak Areas</h2>
+        <div class="weak-card-full" id="weakCardFull">
+          <p class="weak-empty" id="weakEmpty">Flag questions during practice to build this list</p>
+          <ul class="weak-list" id="weakList" hidden></ul>
+        </div>
+      </section>
+
+      <!-- Settings (full screen) -->
+      <section class="screen screen-settings" id="screenSettings" data-route="settings">
+        <h2 class="screen-title">Settings</h2>
+        <div class="settings-section">
+          <h3 class="settings-subtitle">Upcoming Exam</h3>
+          <div class="countdown-card" id="countdownCard">
+            <div class="countdown-set" id="countdownSet">
+              <label for="examDate">Exam date</label>
+              <input type="date" id="examDate" />
+              <button type="button" class="btn btn-primary btn-sm" id="btnSetExam">Set</button>
+            </div>
+            <div class="countdown-display" id="countdownDisplay" hidden>
+              <p class="countdown-label" id="countdownLabel"></p>
+              <p class="countdown-value" id="countdownValue"></p>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnClearExam">Clear</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-subtitle">Session Defaults</h3>
+          <p class="settings-note">Think and answer times are configured on the Subjects screen.</p>
+        </div>
+      </section>
+
+      <!-- Think phase (nested / overlay when in session) -->
+      <section class="screen screen-think screen-session" id="screenThink">
+        <p class="phase-label">Think</p>
+        <p class="question-text" id="thinkQuestion"></p>
+        <div class="timer think-timer" id="thinkTimer">
+          <span class="timer-value" id="thinkTimerValue"></span>
+        </div>
+        <div class="session-actions">
+          <button type="button" class="btn btn-primary" id="btnStartAnswer">Start answering</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnEndSessionThink">End session</button>
+        </div>
+      </section>
+
+      <!-- Answer phase -->
+      <section class="screen screen-answer screen-session" id="screenAnswer">
+        <p class="phase-label">Answer</p>
+        <p class="question-text" id="answerQuestion"></p>
+        <div class="timer answer-timer" id="answerTimer">
+          <span class="timer-value" id="answerTimerValue"></span>
+        </div>
+        <div class="answer-notes">
+          <label for="answerNotes">Your notes / outline (optional)</label>
+          <textarea id="answerNotes" rows="4" placeholder="Jot key points as you speak…"></textarea>
+        </div>
+        <div class="session-actions">
+          <button type="button" class="btn btn-secondary" id="btnNextQuestion">Next question</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnEndSessionAnswer">End session</button>
+        </div>
+      </section>
+
+      <!-- Feedback / key points -->
+      <section class="screen screen-feedback screen-session" id="screenFeedback">
+        <p class="phase-label">Key points to include</p>
+        <p class="question-text" id="feedbackQuestion"></p>
+        <ul class="key-points" id="keyPoints"></ul>
+        <div class="feedback-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnFlagWeak">Flag as weak area</button>
+          <button type="button" class="btn btn-primary" id="btnContinueAfterFeedback">Continue</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnEndSessionFeedback">End session</button>
+        </div>
+      </section>
+
+      <!-- Session complete -->
+      <section class="screen screen-complete screen-session" id="screenComplete">
+        <h2>Session complete</h2>
+        <p class="summary" id="sessionSummary"></p>
+        <div class="complete-actions">
+          <button type="button" class="btn btn-primary" id="btnBackToHome">Back to home</button>
+          <button type="button" class="btn btn-secondary" id="btnPracticeMore">Practice another subject</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="questionCounter"></span>
+    </footer>
+  </div>
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
