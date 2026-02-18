@@ -91,6 +91,8 @@ function runApp() {
     folderSubfolderFilter: "",
     folderBackRoute: "subjects",
     editingNoteId: null,
+    librarySubjects: [],
+    libraryPendingFiles: null,
   };
 
   function loadStorage(key, fallback) {
@@ -454,6 +456,32 @@ function runApp() {
     }
   }
 
+  function populateLibraryFolderSelect(selectEl) {
+    if (!selectEl) return;
+    const subjects = state.librarySubjects || [];
+    selectEl.innerHTML =
+      '<option value="">— Choose a folder —</option>' +
+      subjects.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+  }
+
+  async function addFilesToSubject(subject, fileList) {
+    for (const file of fileList) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`"${file.name}" is too large (max 10 MB).`);
+        continue;
+      }
+      const content = await readFileAsBlob(file);
+      await addItem({
+        subject,
+        name: file.name,
+        type: "file",
+        content,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+      });
+    }
+  }
+
   async function renderLibrary() {
     const emptyEl = document.getElementById("libraryEmpty");
     const listEl = document.getElementById("libraryFolders");
@@ -464,6 +492,7 @@ function runApp() {
       const dbSubjects = typeof getUniqueSubjects === "function" ? await getUniqueSubjects() : [];
       const custom = loadStorage(STORAGE_KEYS.customSubjects, []);
       const allSubjects = [...new Set([...practiceSubjects, ...dbSubjects, ...custom])].sort();
+      state.librarySubjects = allSubjects;
 
       if (allSubjects.length === 0) {
         emptyEl.hidden = false;
@@ -879,10 +908,77 @@ function runApp() {
   });
   document.getElementById("btnStartMockExam").addEventListener("click", () => navigate("subjects"));
   document.getElementById("btnStartExamTile").addEventListener("click", () => navigate("subjects"));
+  const homeLibraryTile = document.getElementById("homeLibraryTile");
+  if (homeLibraryTile) {
+    homeLibraryTile.addEventListener("click", () => navigate("library"));
+    homeLibraryTile.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("library"); } });
+  }
   const btnOpenLibrary = document.getElementById("btnOpenLibrary");
-  if (btnOpenLibrary) btnOpenLibrary.addEventListener("click", () => navigate("library"));
+  if (btnOpenLibrary) btnOpenLibrary.addEventListener("click", (e) => { e.stopPropagation(); navigate("library"); });
   const btnBackFromLibrary = document.getElementById("btnBackFromLibrary");
   if (btnBackFromLibrary) btnBackFromLibrary.addEventListener("click", () => navigate("home"));
+  document.getElementById("libraryFileInput").addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (state.librarySubjects.length === 0) {
+      alert("Create a folder first (use + New folder), then add files.");
+      e.target.value = "";
+      return;
+    }
+    state.libraryPendingFiles = Array.from(files);
+    document.getElementById("libraryAddFilesCount").textContent =
+      `${state.libraryPendingFiles.length} file${state.libraryPendingFiles.length !== 1 ? "s" : ""} selected. Choose a folder to add them to.`;
+    populateLibraryFolderSelect(document.getElementById("libraryAddFilesFolder"));
+    document.getElementById("libraryAddFilesFolder").value = "";
+    document.getElementById("libraryAddFilesModal").hidden = false;
+    e.target.value = "";
+  });
+  document.getElementById("btnCloseLibraryAddFiles").addEventListener("click", () => {
+    document.getElementById("libraryAddFilesModal").hidden = true;
+    state.libraryPendingFiles = null;
+  });
+  document.querySelector("#libraryAddFilesModal .modal-backdrop").addEventListener("click", () => {
+    document.getElementById("libraryAddFilesModal").hidden = true;
+    state.libraryPendingFiles = null;
+  });
+  document.getElementById("btnConfirmLibraryAddFiles").addEventListener("click", async () => {
+    const folder = document.getElementById("libraryAddFilesFolder").value.trim();
+    if (!folder || !state.libraryPendingFiles || state.libraryPendingFiles.length === 0) return;
+    await addFilesToSubject(folder, state.libraryPendingFiles);
+    state.libraryPendingFiles = null;
+    document.getElementById("libraryAddFilesModal").hidden = true;
+    renderLibrary();
+  });
+  document.getElementById("btnLibraryNewNote").addEventListener("click", () => {
+    if (state.librarySubjects.length === 0) {
+      alert("Create a folder first (use + New folder), then add notes.");
+      return;
+    }
+    populateLibraryFolderSelect(document.getElementById("libraryNewNoteFolder"));
+    document.getElementById("libraryNewNoteFolder").value = state.librarySubjects[0] || "";
+    document.getElementById("libraryNewNoteTitle").value = "";
+    document.getElementById("libraryNewNoteContent").value = "";
+    document.getElementById("libraryNewNoteModal").hidden = false;
+    document.getElementById("libraryNewNoteTitle").focus();
+  });
+  document.getElementById("btnCloseLibraryNewNote").addEventListener("click", () => {
+    document.getElementById("libraryNewNoteModal").hidden = true;
+  });
+  document.querySelector("#libraryNewNoteModal .modal-backdrop").addEventListener("click", () => {
+    document.getElementById("libraryNewNoteModal").hidden = true;
+  });
+  document.getElementById("btnSaveLibraryNewNote").addEventListener("click", async () => {
+    const folder = document.getElementById("libraryNewNoteFolder").value.trim();
+    const title = document.getElementById("libraryNewNoteTitle").value.trim();
+    const content = document.getElementById("libraryNewNoteContent").value;
+    if (!folder || !title) {
+      alert("Please choose a folder and enter a title.");
+      return;
+    }
+    await addItem({ subject: folder, name: title, type: "note", content: content || "", subfolder: "" });
+    document.getElementById("libraryNewNoteModal").hidden = true;
+    renderLibrary();
+  });
   document.getElementById("btnNavToPerformance").addEventListener("click", () => navigate("performance"));
   document.getElementById("btnNewFolder").addEventListener("click", () => {
     document.getElementById("newFolderName").value = "";
@@ -948,8 +1044,27 @@ function runApp() {
     renderSettings();
   });
 
+  window.__voxRefresh = function () {
+    updateUI();
+    if (state.route === "library") renderLibrary();
+  };
+  window.openVoxLibrary = function () {
+    navigate("library");
+  };
+
   /* Init */
   renderSubjects();
   updateUI();
 }
-window.addEventListener("vox-api-ready", runApp);
+
+function boot() {
+  runApp();
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+window.addEventListener("vox-api-ready", function () {
+  if (window.__voxRefresh) window.__voxRefresh();
+});

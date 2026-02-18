@@ -396,6 +396,33 @@ html, body {
   color: var(--text-muted);
 }
 
+.home-library {
+  cursor: pointer;
+}
+
+.home-library .btn {
+  pointer-events: auto;
+}
+
+.library-upload-label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.library-add-files-count {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
 .continue-empty,
 .performance-empty,
 .weak-empty {
@@ -707,10 +734,6 @@ html, body {
 }
 
 /* Library screen */
-.library-actions {
-  margin-bottom: 1rem;
-}
-
 .library-list {
   flex: 1;
   min-height: 0;

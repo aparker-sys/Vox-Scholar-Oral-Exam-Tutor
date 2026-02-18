@@ -78,11 +78,11 @@
                 <button type="button" class="btn btn-secondary btn-sm focus-today-btn" id="btnEditFocusToday">Edit focus</button>
               </div>
             </section>
-            <section class="home-tile home-library">
+            <section class="home-tile home-library" id="homeLibraryTile" role="button" tabindex="0" onclick="window.openVoxLibrary ? window.openVoxLibrary() : (document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');}), document.getElementById('screenLibrary') && document.getElementById('screenLibrary').classList.add('active'))">
               <h2 class="tile-title">Library</h2>
               <div class="tile-body">
-                <p class="library-desc">Create folders by subject. Store notes and PDFs.</p>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnOpenLibrary" data-nav="library">Open library</button>
+                <p class="library-desc">Add files from Finder, create notes, and organize by folder.</p>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnOpenLibrary" onclick="event.stopPropagation(); (window.openVoxLibrary ? window.openVoxLibrary() : (document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');}), document.getElementById('screenLibrary') && document.getElementById('screenLibrary').classList.add('active')))">Open library</button>
               </div>
             </section>
           </div>
@@ -137,7 +137,12 @@
           <h2 class="screen-title">Library</h2>
         </div>
         <div class="library-actions">
-          <button type="button" class="btn btn-primary btn-sm" id="btnNewFolder">+ New folder</button>
+          <label class="btn btn-primary btn-sm library-upload-label">
+            Add files from computer
+            <input type="file" id="libraryFileInput" multiple hidden />
+          </label>
+          <button type="button" class="btn btn-primary btn-sm" id="btnLibraryNewNote">+ New note</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnNewFolder">+ New folder</button>
         </div>
         <div class="library-list" id="libraryList">
           <p class="library-empty" id="libraryEmpty">No folders yet. Create a folder to add notes and PDFs.</p>
@@ -235,6 +240,59 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="btnCreateNewFolder">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add files to folder (from Library) -->
+      <div class="modal modal-sm" id="libraryAddFilesModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">Add files to folder</h3>
+            <button type="button" class="modal-close" id="btnCloseLibraryAddFiles">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="library-add-files-count" id="libraryAddFilesCount"></p>
+            <label>
+              <span>Folder</span>
+              <select id="libraryAddFilesFolder">
+                <option value="">— Choose a folder —</option>
+              </select>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnConfirmLibraryAddFiles">Add here</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- New note from Library -->
+      <div class="modal" id="libraryNewNoteModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">New note</h3>
+            <button type="button" class="modal-close" id="btnCloseLibraryNewNote">×</button>
+          </div>
+          <div class="modal-body">
+            <label>
+              <span>Folder</span>
+              <select id="libraryNewNoteFolder">
+                <option value="">— Choose a folder —</option>
+              </select>
+            </label>
+            <label>
+              <span>Title</span>
+              <input type="text" id="libraryNewNoteTitle" placeholder="Note title" />
+            </label>
+            <label>
+              <span>Content</span>
+              <textarea id="libraryNewNoteContent" rows="8" placeholder="Write your note…"></textarea>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnSaveLibraryNewNote">Save note</button>
           </div>
         </div>
       </div>
