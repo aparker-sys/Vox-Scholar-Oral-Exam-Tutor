@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Oral Exam Tutor — Prep Smarter</title>
+  <title>Vox Scholar — Prep Smarter</title>
   <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="app">
     <header class="header">
       <div class="header-left">
-        <h1 class="logo" id="logoHome">Oral Exam Tutor</h1>
+        <h1 class="logo" id="logoHome">Vox Scholar</h1>
         <p class="tagline">Practice like the real thing</p>
       </div>
       <button type="button" class="btn-settings" id="btnSettings" title="Settings">⚙</button>
@@ -22,6 +23,12 @@
     <main class="main">
       <!-- Home / Dashboard: 4 sections, no scroll -->
       <section class="screen screen-home" id="screenHome" data-route="home">
+        <div class="home-cta">
+          <button type="button" class="btn-cta-primary" id="btnStartMockExam">
+            <span class="cta-label">🎤 Start Mock Exam</span>
+            <span class="cta-sublabel">15-minute timed oral simulation</span>
+          </button>
+        </div>
         <div class="home-grid">
           <section class="home-tile home-continue" id="homeContinue">
             <h2 class="tile-title">Continue Last Session</h2>

@@ -753,6 +753,7 @@
   document.getElementById("btnBackFromSettings").addEventListener("click", () => navigate("home"));
 
   document.getElementById("btnNavToSubjects").addEventListener("click", () => navigate("subjects"));
+  document.getElementById("btnStartMockExam").addEventListener("click", () => navigate("subjects"));
   document.getElementById("btnNavToPerformance").addEventListener("click", () => navigate("performance"));
   document.getElementById("btnNavToWeak").addEventListener("click", () => navigate("weak"));
 
