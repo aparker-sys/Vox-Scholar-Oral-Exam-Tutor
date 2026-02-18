@@ -1,6 +1,6 @@
 /* Oral Exam Tutor — App logic with navigation and state */
 
-(function () {
+function runApp() {
   "use strict";
 
   const STORAGE_KEYS = {
@@ -119,7 +119,8 @@
   }
 
   function clearLastSession() {
-    localStorage.removeItem(STORAGE_KEYS.lastSession);
+    if (typeof clearLastSessionStorage === "function") clearLastSessionStorage();
+    else localStorage.removeItem(STORAGE_KEYS.lastSession);
   }
 
   function loadLastSession() {
@@ -454,33 +455,36 @@
   }
 
   async function renderLibrary() {
-    const practiceSubjects = Object.keys(QUESTIONS_BY_TOPIC || {});
-    const dbSubjects = await getUniqueSubjects();
-    const custom = loadStorage(STORAGE_KEYS.customSubjects, []);
-    const allSubjects = [...new Set([...practiceSubjects, ...dbSubjects, ...custom])].sort();
-
     const emptyEl = document.getElementById("libraryEmpty");
     const listEl = document.getElementById("libraryFolders");
-    if (allSubjects.length === 0) {
-      emptyEl.hidden = false;
-      listEl.hidden = true;
-      return;
-    }
-    emptyEl.hidden = true;
-    listEl.hidden = false;
+    if (!emptyEl || !listEl) return;
 
-    const rows = await Promise.all(
-      allSubjects.map(async (subject) => {
-        const items = await getAllBySubject(subject);
-        const notes = items.filter((i) => i.type === "note").length;
-        const files = items.filter((i) => i.type !== "note").length;
-        return { subject, notes, files };
-      })
-    );
+    try {
+      const practiceSubjects = Object.keys(typeof QUESTIONS_BY_TOPIC === "object" && QUESTIONS_BY_TOPIC ? QUESTIONS_BY_TOPIC : {});
+      const dbSubjects = typeof getUniqueSubjects === "function" ? await getUniqueSubjects() : [];
+      const custom = loadStorage(STORAGE_KEYS.customSubjects, []);
+      const allSubjects = [...new Set([...practiceSubjects, ...dbSubjects, ...custom])].sort();
 
-    listEl.innerHTML = rows
-      .map(
-        (r) => `
+      if (allSubjects.length === 0) {
+        emptyEl.hidden = false;
+        listEl.hidden = true;
+        return;
+      }
+      emptyEl.hidden = true;
+      listEl.hidden = false;
+
+      const rows = await Promise.all(
+        allSubjects.map(async (subject) => {
+          const items = typeof getAllBySubject === "function" ? await getAllBySubject(subject) : [];
+          const notes = items.filter((i) => i.type === "note").length;
+          const files = items.filter((i) => i.type !== "note").length;
+          return { subject, notes, files };
+        })
+      );
+
+      listEl.innerHTML = rows
+        .map(
+          (r) => `
         <li class="library-folder-item">
           <div class="library-folder-info">
             <span class="library-folder-name">${escapeHtml(r.subject)}</span>
@@ -489,13 +493,17 @@
           <button type="button" class="btn btn-primary btn-sm" data-library-open="${escapeHtml(r.subject)}">Open</button>
         </li>
       `
-      )
-      .join("");
+        )
+        .join("");
 
-    listEl.querySelectorAll("[data-library-open]").forEach((btn) => {
-      const subject = btn.getAttribute("data-library-open");
-      btn.addEventListener("click", () => openFolder(subject, "library"));
-    });
+      listEl.querySelectorAll("[data-library-open]").forEach((btn) => {
+        const subject = btn.getAttribute("data-library-open");
+        if (subject) btn.addEventListener("click", () => openFolder(subject, "library"));
+      });
+    } catch (err) {
+      emptyEl.hidden = false;
+      listEl.hidden = true;
+    }
   }
 
   async function openItem(id) {
@@ -861,10 +869,20 @@
   document.getElementById("btnBackFromWeak").addEventListener("click", () => navigate("home"));
   document.getElementById("btnBackFromSettings").addEventListener("click", () => navigate("home"));
 
+  document.querySelector(".app").addEventListener("click", (e) => {
+    const nav = e.target.closest("[data-nav]");
+    if (nav) {
+      e.preventDefault();
+      const route = nav.getAttribute("data-nav");
+      if (route && ROUTES.includes(route)) navigate(route);
+    }
+  });
   document.getElementById("btnStartMockExam").addEventListener("click", () => navigate("subjects"));
   document.getElementById("btnStartExamTile").addEventListener("click", () => navigate("subjects"));
-  document.getElementById("btnOpenLibrary").addEventListener("click", () => navigate("library"));
-  document.getElementById("btnBackFromLibrary").addEventListener("click", () => navigate("home"));
+  const btnOpenLibrary = document.getElementById("btnOpenLibrary");
+  if (btnOpenLibrary) btnOpenLibrary.addEventListener("click", () => navigate("library"));
+  const btnBackFromLibrary = document.getElementById("btnBackFromLibrary");
+  if (btnBackFromLibrary) btnBackFromLibrary.addEventListener("click", () => navigate("home"));
   document.getElementById("btnNavToPerformance").addEventListener("click", () => navigate("performance"));
   document.getElementById("btnNewFolder").addEventListener("click", () => {
     document.getElementById("newFolderName").value = "";
@@ -933,4 +951,5 @@
   /* Init */
   renderSubjects();
   updateUI();
-})();
+}
+window.addEventListener("vox-api-ready", runApp);

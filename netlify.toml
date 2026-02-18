@@ -1,0 +1,4 @@
+# Netlify config for Vox Scholar (static site)
+[build]
+  publish = "."
+  # No build command — we're serving static HTML/CSS/JS as-is

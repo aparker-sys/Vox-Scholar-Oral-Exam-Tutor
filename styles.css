@@ -212,6 +212,19 @@ html, body {
   display: flex;
 }
 
+.screen-library.active,
+.screen-subjects.active,
+.screen-folder.active,
+.screen-performance.active,
+.screen-weak.active,
+.screen-settings.active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .home-cta {
   flex-shrink: 0;
   display: flex;

@@ -82,7 +82,7 @@
               <h2 class="tile-title">Library</h2>
               <div class="tile-body">
                 <p class="library-desc">Create folders by subject. Store notes and PDFs.</p>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnOpenLibrary">Open library</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnOpenLibrary" data-nav="library">Open library</button>
               </div>
             </section>
           </div>
@@ -133,7 +133,7 @@
       <!-- Library: all subject folders -->
       <section class="screen screen-library" id="screenLibrary" data-route="library">
         <div class="screen-header">
-          <button type="button" class="btn-back" id="btnBackFromLibrary">← Home</button>
+          <button type="button" class="btn-back" id="btnBackFromLibrary" data-nav="home">← Home</button>
           <h2 class="screen-title">Library</h2>
         </div>
         <div class="library-actions">
@@ -351,6 +351,7 @@
   </div>
   <script src="questions.js"></script>
   <script src="db.js"></script>
+  <script src="api.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
