@@ -20,27 +20,8 @@
       </div>
     </header>
 
-    <div class="stats-bar" id="statsBar" aria-label="Quick stats">
-      <div class="stat-item">
-        <span class="stat-value" id="statSessions">0</span>
-        <span class="stat-label">Sessions completed</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-value" id="statScore">—</span>
-        <span class="stat-label">Average score</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-value" id="statStreak">0</span>
-        <span class="stat-label">Current streak</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-value stat-subject" id="statSubject">—</span>
-        <span class="stat-label">Most practiced</span>
-      </div>
-    </div>
-
     <main class="main">
-      <!-- Home / Dashboard: 4 sections, no scroll -->
+      <!-- Home: Header → CTA → Metrics → 2-col (Left: Continue / Start Exam / Focus Today | Right: Performance / Weak) -->
       <section class="screen screen-home" id="screenHome" data-route="home">
         <div class="home-cta">
           <button type="button" class="btn-cta-primary" id="btnStartMockExam">
@@ -48,45 +29,85 @@
             <span class="cta-sublabel">15-minute timed oral simulation</span>
           </button>
         </div>
-        <div class="home-grid">
-          <section class="home-tile home-continue" id="homeContinue">
-            <h2 class="tile-title">Continue Last Session</h2>
-            <div class="tile-body" id="continueCard">
-              <p class="continue-empty" id="continueEmpty">No session in progress</p>
-              <div class="continue-content" id="continueContent" hidden>
-                <p class="continue-topic" id="continueTopic"></p>
-                <p class="continue-progress" id="continueProgress"></p>
-                <button type="button" class="btn btn-primary btn-sm" id="btnContinueSession">Continue</button>
+        <div class="stats-bar" id="statsBar" aria-label="Quick stats">
+          <div class="stat-item">
+            <span class="stat-value" id="statSessions">0</span>
+            <span class="stat-label">Sessions completed</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="statScore">—</span>
+            <span class="stat-label">Average score</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="statStreak">0</span>
+            <span class="stat-label">Current streak</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value stat-subject" id="statSubject">—</span>
+            <span class="stat-label">Most practiced</span>
+          </div>
+        </div>
+        <div class="home-two-col">
+          <div class="home-left">
+            <section class="home-tile home-continue" id="homeContinue">
+              <h2 class="tile-title">Continue Last Session</h2>
+              <div class="tile-body" id="continueCard">
+                <p class="continue-empty" id="continueEmpty">No session in progress</p>
+                <div class="continue-content" id="continueContent" hidden>
+                  <p class="continue-topic" id="continueTopic"></p>
+                  <p class="continue-progress" id="continueProgress"></p>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnContinueSession">Continue</button>
+                </div>
               </div>
-            </div>
-          </section>
-          <section class="home-tile home-subjects">
-            <h2 class="tile-title">Subjects</h2>
-            <div class="tile-body">
-              <div class="home-subject-grid" id="homeSubjectGrid"></div>
-              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToSubjects">View all</button>
-            </div>
-          </section>
-          <section class="home-tile home-performance">
-            <h2 class="tile-title">Recent Performance</h2>
-            <div class="tile-body">
-              <p class="performance-empty" id="homePerformanceEmpty">Complete a session to see stats</p>
-              <div class="performance-preview" id="homePerformancePreview" hidden>
-                <div id="homePerformanceStats"></div>
+            </section>
+            <section class="home-tile home-start-exam">
+              <h2 class="tile-title">Start Exam</h2>
+              <div class="tile-body">
+                <p class="start-exam-desc">Pick a subject and run a timed practice session.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="btnStartExamTile">Start exam</button>
               </div>
-              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToPerformance">View details</button>
-            </div>
-          </section>
-          <section class="home-tile home-weak">
-            <h2 class="tile-title">Weak Areas</h2>
-            <div class="tile-body">
-              <p class="weak-empty" id="homeWeakEmpty">Flag questions during practice</p>
-              <div class="weak-preview" id="homeWeakPreview" hidden>
-                <ul id="homeWeakList"></ul>
+            </section>
+            <section class="home-tile focus-today-panel" id="focusTodayPanel">
+              <h2 class="tile-title">Focus Today</h2>
+              <div class="tile-body focus-today-body">
+                <p class="focus-today-text" id="focusTodayText">Set your focus for today</p>
+                <div class="focus-today-edit" id="focusTodayEdit" hidden>
+                  <input type="text" class="focus-today-input" id="focusTodayInput" placeholder="e.g. Cardiorespiratory system" maxlength="120" />
+                  <button type="button" class="btn btn-primary btn-sm" id="btnSaveFocusToday">Save</button>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm focus-today-btn" id="btnEditFocusToday">Edit focus</button>
               </div>
-              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToWeak">View all</button>
-            </div>
-          </section>
+            </section>
+            <section class="home-tile home-library">
+              <h2 class="tile-title">Library</h2>
+              <div class="tile-body">
+                <p class="library-desc">Create folders by subject. Store notes and PDFs.</p>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnOpenLibrary">Open library</button>
+              </div>
+            </section>
+          </div>
+          <div class="home-right">
+            <section class="home-tile home-performance">
+              <h2 class="tile-title">Recent Performance</h2>
+              <div class="tile-body">
+                <p class="performance-empty" id="homePerformanceEmpty">Complete a session to see stats</p>
+                <div class="performance-preview" id="homePerformancePreview" hidden>
+                  <div id="homePerformanceStats"></div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToPerformance">View details</button>
+              </div>
+            </section>
+            <section class="home-tile home-weak">
+              <h2 class="tile-title">Weak Areas</h2>
+              <div class="tile-body">
+                <p class="weak-empty" id="homeWeakEmpty">Flag questions during practice</p>
+                <div class="weak-preview" id="homeWeakPreview" hidden>
+                  <ul id="homeWeakList"></ul>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToWeak">View all</button>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -109,10 +130,25 @@
         <div class="subject-grid" id="subjectGrid"></div>
       </section>
 
+      <!-- Library: all subject folders -->
+      <section class="screen screen-library" id="screenLibrary" data-route="library">
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromLibrary">← Home</button>
+          <h2 class="screen-title">Library</h2>
+        </div>
+        <div class="library-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="btnNewFolder">+ New folder</button>
+        </div>
+        <div class="library-list" id="libraryList">
+          <p class="library-empty" id="libraryEmpty">No folders yet. Create a folder to add notes and PDFs.</p>
+          <ul class="library-folders" id="libraryFolders" hidden></ul>
+        </div>
+      </section>
+
       <!-- Subject Folder: notes & files -->
       <section class="screen screen-folder" id="screenFolder" data-route="folder">
         <div class="screen-header">
-          <button type="button" class="btn-back" id="btnBackFromFolder">← Subjects</button>
+          <button type="button" class="btn-back" id="btnBackFromFolder">← Back</button>
           <h2 class="screen-title" id="folderSubjectTitle">Folder</h2>
         </div>
         <div class="folder-toolbar">
@@ -179,6 +215,26 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="btnCreateSubfolder">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- New folder (subject) modal -->
+      <div class="modal modal-sm" id="newFolderModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">New folder</h3>
+            <button type="button" class="modal-close" id="btnCloseNewFolder">×</button>
+          </div>
+          <div class="modal-body">
+            <label>
+              <span>Subject / folder name</span>
+              <input type="text" id="newFolderName" placeholder="e.g. Cardiorespiratory, Pharmacology" />
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnCreateNewFolder">Create</button>
           </div>
         </div>
       </div>

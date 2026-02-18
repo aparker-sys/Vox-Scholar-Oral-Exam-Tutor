@@ -20,6 +20,24 @@ function openDB() {
   });
 }
 
+async function getAll() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+async function getUniqueSubjects() {
+  const items = await getAll();
+  const subjects = new Set(items.map((i) => i.subject).filter(Boolean));
+  return Array.from(subjects).sort();
+}
+
 async function getAllBySubject(subject) {
   const db = await openDB();
   return new Promise((resolve, reject) => {

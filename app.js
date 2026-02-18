@@ -8,15 +8,18 @@
     sessionHistory: "oralExam_sessionHistory",
     weakAreas: "oralExam_weakAreas",
     examDate: "oralExam_examDate",
+    focusToday: "oralExam_focusToday",
+    customSubjects: "oralExam_customSubjects",
   };
 
-  const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder"];
+  const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
   const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
 
   const screens = {
     home: document.getElementById("screenHome"),
     subjects: document.getElementById("screenSubjects"),
     folder: document.getElementById("screenFolder"),
+    library: document.getElementById("screenLibrary"),
     performance: document.getElementById("screenPerformance"),
     weak: document.getElementById("screenWeak"),
     settings: document.getElementById("screenSettings"),
@@ -28,7 +31,6 @@
 
   const elements = {
     subjectGrid: document.getElementById("subjectGrid"),
-    homeSubjectGrid: document.getElementById("homeSubjectGrid"),
     homePerformanceEmpty: document.getElementById("homePerformanceEmpty"),
     homePerformancePreview: document.getElementById("homePerformancePreview"),
     homePerformanceStats: document.getElementById("homePerformanceStats"),
@@ -67,6 +69,9 @@
     statScore: document.getElementById("statScore"),
     statStreak: document.getElementById("statStreak"),
     statSubject: document.getElementById("statSubject"),
+    focusTodayText: document.getElementById("focusTodayText"),
+    focusTodayInput: document.getElementById("focusTodayInput"),
+    focusTodayEdit: document.getElementById("focusTodayEdit"),
   };
 
   /* Centralized app state */
@@ -84,6 +89,7 @@
     answerRemaining: 0,
     folderSubject: null,
     folderSubfolderFilter: "",
+    folderBackRoute: "subjects",
     editingNoteId: null,
   };
 
@@ -164,6 +170,17 @@
     elements.statScore.textContent = stats.averageScore != null ? `${Math.round(stats.averageScore)}%` : "—";
     elements.statStreak.textContent = String(stats.currentStreak);
     elements.statSubject.textContent = stats.mostPracticed || "—";
+  }
+
+  function getFocusToday() {
+    const raw = loadStorage(STORAGE_KEYS.focusToday, null);
+    if (!raw || typeof raw !== "object") return "";
+    return raw.text || "";
+  }
+
+  function setFocusToday(text) {
+    const trimmed = (text || "").trim();
+    saveStorage(STORAGE_KEYS.focusToday, { date: new Date().toISOString().slice(0, 10), text: trimmed });
   }
 
   function getWeakAreas() {
@@ -288,6 +305,9 @@
       case "folder":
         renderFolder();
         break;
+      case "library":
+        renderLibrary();
+        break;
       case "performance":
         renderPerformance();
         break;
@@ -312,15 +332,13 @@
       elements.continueContent.hidden = true;
     }
 
-    elements.homeSubjectGrid.innerHTML = "";
-    Object.keys(QUESTIONS_BY_TOPIC).forEach((topic) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "subject-btn";
-      btn.textContent = topic;
-      btn.addEventListener("click", () => selectTopic(topic));
-      elements.homeSubjectGrid.appendChild(btn);
-    });
+    const focusText = getFocusToday();
+    if (elements.focusTodayText) {
+      elements.focusTodayText.textContent = focusText || "Set your focus for today";
+      elements.focusTodayText.classList.toggle("empty", !focusText);
+    }
+    if (elements.focusTodayEdit) elements.focusTodayEdit.hidden = true;
+    if (elements.focusTodayInput) elements.focusTodayInput.value = focusText;
 
     const history = loadStorage(STORAGE_KEYS.sessionHistory, []);
     if (history.length > 0) {
@@ -376,9 +394,10 @@
     });
   }
 
-  function openFolder(subject) {
+  function openFolder(subject, backRoute) {
     state.folderSubject = subject;
     state.folderSubfolderFilter = "";
+    state.folderBackRoute = backRoute || "subjects";
     navigate("folder");
   }
 
@@ -432,6 +451,51 @@
         li.querySelector('[data-action="delete"]').addEventListener("click", () => deleteFolderItem(id));
       });
     }
+  }
+
+  async function renderLibrary() {
+    const practiceSubjects = Object.keys(QUESTIONS_BY_TOPIC || {});
+    const dbSubjects = await getUniqueSubjects();
+    const custom = loadStorage(STORAGE_KEYS.customSubjects, []);
+    const allSubjects = [...new Set([...practiceSubjects, ...dbSubjects, ...custom])].sort();
+
+    const emptyEl = document.getElementById("libraryEmpty");
+    const listEl = document.getElementById("libraryFolders");
+    if (allSubjects.length === 0) {
+      emptyEl.hidden = false;
+      listEl.hidden = true;
+      return;
+    }
+    emptyEl.hidden = true;
+    listEl.hidden = false;
+
+    const rows = await Promise.all(
+      allSubjects.map(async (subject) => {
+        const items = await getAllBySubject(subject);
+        const notes = items.filter((i) => i.type === "note").length;
+        const files = items.filter((i) => i.type !== "note").length;
+        return { subject, notes, files };
+      })
+    );
+
+    listEl.innerHTML = rows
+      .map(
+        (r) => `
+        <li class="library-folder-item">
+          <div class="library-folder-info">
+            <span class="library-folder-name">${escapeHtml(r.subject)}</span>
+            <span class="library-folder-meta">${r.notes} note${r.notes !== 1 ? "s" : ""}, ${r.files} file${r.files !== 1 ? "s" : ""}</span>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" data-library-open="${escapeHtml(r.subject)}">Open</button>
+        </li>
+      `
+      )
+      .join("");
+
+    listEl.querySelectorAll("[data-library-open]").forEach((btn) => {
+      const subject = btn.getAttribute("data-library-open");
+      btn.addEventListener("click", () => openFolder(subject, "library"));
+    });
   }
 
   async function openItem(id) {
@@ -761,7 +825,7 @@
   document.getElementById("logoHome").addEventListener("click", () => navigate("home"));
   document.getElementById("btnSettings").addEventListener("click", () => navigate("settings"));
   document.getElementById("btnBackFromSubjects").addEventListener("click", () => navigate("home"));
-  document.getElementById("btnBackFromFolder").addEventListener("click", () => navigate("subjects"));
+  document.getElementById("btnBackFromFolder").addEventListener("click", () => navigate(state.folderBackRoute || "subjects"));
 
   document.getElementById("folderSubfolder").addEventListener("change", (e) => {
     state.folderSubfolderFilter = e.target.value;
@@ -797,9 +861,47 @@
   document.getElementById("btnBackFromWeak").addEventListener("click", () => navigate("home"));
   document.getElementById("btnBackFromSettings").addEventListener("click", () => navigate("home"));
 
-  document.getElementById("btnNavToSubjects").addEventListener("click", () => navigate("subjects"));
   document.getElementById("btnStartMockExam").addEventListener("click", () => navigate("subjects"));
+  document.getElementById("btnStartExamTile").addEventListener("click", () => navigate("subjects"));
+  document.getElementById("btnOpenLibrary").addEventListener("click", () => navigate("library"));
+  document.getElementById("btnBackFromLibrary").addEventListener("click", () => navigate("home"));
   document.getElementById("btnNavToPerformance").addEventListener("click", () => navigate("performance"));
+  document.getElementById("btnNewFolder").addEventListener("click", () => {
+    document.getElementById("newFolderName").value = "";
+    document.getElementById("newFolderModal").hidden = false;
+    document.getElementById("newFolderName").focus();
+  });
+  document.getElementById("btnCloseNewFolder").addEventListener("click", () => {
+    document.getElementById("newFolderModal").hidden = true;
+  });
+  document.querySelector("#newFolderModal .modal-backdrop").addEventListener("click", () => {
+    document.getElementById("newFolderModal").hidden = true;
+  });
+  document.getElementById("btnCreateNewFolder").addEventListener("click", () => {
+    const input = document.getElementById("newFolderName");
+    const name = (input.value || "").trim();
+    if (!name) return;
+    const custom = loadStorage(STORAGE_KEYS.customSubjects, []);
+    if (!custom.includes(name)) {
+      custom.push(name);
+      saveStorage(STORAGE_KEYS.customSubjects, custom);
+    }
+    document.getElementById("newFolderModal").hidden = true;
+    input.value = "";
+    openFolder(name, "library");
+  });
+  document.getElementById("btnEditFocusToday").addEventListener("click", () => {
+    elements.focusTodayEdit.hidden = false;
+    document.getElementById("btnEditFocusToday").hidden = true;
+    elements.focusTodayInput.value = getFocusToday();
+    elements.focusTodayInput.focus();
+  });
+  document.getElementById("btnSaveFocusToday").addEventListener("click", () => {
+    setFocusToday(elements.focusTodayInput.value);
+    elements.focusTodayEdit.hidden = true;
+    document.getElementById("btnEditFocusToday").hidden = false;
+    renderHome();
+  });
   document.getElementById("btnNavToWeak").addEventListener("click", () => navigate("weak"));
 
   document.getElementById("btnContinueSession").addEventListener("click", continueLastSession);
