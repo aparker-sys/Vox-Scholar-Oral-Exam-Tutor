@@ -63,6 +63,10 @@
     countdownValue: document.getElementById("countdownValue"),
     examDate: document.getElementById("examDate"),
     progressBar: document.querySelector(".progress-bar"),
+    statSessions: document.getElementById("statSessions"),
+    statScore: document.getElementById("statScore"),
+    statStreak: document.getElementById("statStreak"),
+    statSubject: document.getElementById("statSubject"),
   };
 
   /* Centralized app state */
@@ -120,6 +124,46 @@
     const history = loadStorage(STORAGE_KEYS.sessionHistory, []);
     history.unshift({ topic, completed, date: new Date().toISOString() });
     saveStorage(STORAGE_KEYS.sessionHistory, history.slice(0, 20));
+  }
+
+  function getQuickStats() {
+    const history = loadStorage(STORAGE_KEYS.sessionHistory, []);
+    const sessionsCompleted = history.length;
+    const byTopic = {};
+    history.forEach((h) => {
+      byTopic[h.topic] = (byTopic[h.topic] || 0) + 1;
+    });
+    const mostPracticed =
+      Object.keys(byTopic).length === 0
+        ? null
+        : Object.entries(byTopic).sort((a, b) => b[1] - a[1])[0][0];
+    const daySet = new Set(history.map((h) => (h.date || "").slice(0, 10)).filter(Boolean));
+    const sortedDays = Array.from(daySet).sort().reverse();
+    let currentStreak = 0;
+    if (sortedDays.length > 0) {
+      const mostRecent = sortedDays[0];
+      for (let i = 0; i < 365; i++) {
+        const d = new Date(mostRecent);
+        d.setDate(d.getDate() - i);
+        const dayStr = d.toISOString().slice(0, 10);
+        if (daySet.has(dayStr)) currentStreak++;
+        else break;
+      }
+    }
+    return {
+      sessionsCompleted,
+      averageScore: null,
+      currentStreak,
+      mostPracticed,
+    };
+  }
+
+  function renderQuickStats() {
+    const stats = getQuickStats();
+    elements.statSessions.textContent = String(stats.sessionsCompleted);
+    elements.statScore.textContent = stats.averageScore != null ? `${Math.round(stats.averageScore)}%` : "—";
+    elements.statStreak.textContent = String(stats.currentStreak);
+    elements.statSubject.textContent = stats.mostPracticed || "—";
   }
 
   function getWeakAreas() {
@@ -208,6 +252,7 @@
   }
 
   function updateUI() {
+    renderQuickStats();
     const inSession = state.sessionRoute && SESSION_ROUTES.includes(state.sessionRoute);
     if (elements.progressBar) {
       elements.progressBar.classList.toggle("hidden", !inSession);
