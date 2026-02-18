@@ -10,12 +10,13 @@
     examDate: "oralExam_examDate",
   };
 
-  const ROUTES = ["home", "subjects", "performance", "weak", "settings"];
+  const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder"];
   const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
 
   const screens = {
     home: document.getElementById("screenHome"),
     subjects: document.getElementById("screenSubjects"),
+    folder: document.getElementById("screenFolder"),
     performance: document.getElementById("screenPerformance"),
     weak: document.getElementById("screenWeak"),
     settings: document.getElementById("screenSettings"),
@@ -27,6 +28,13 @@
 
   const elements = {
     subjectGrid: document.getElementById("subjectGrid"),
+    homeSubjectGrid: document.getElementById("homeSubjectGrid"),
+    homePerformanceEmpty: document.getElementById("homePerformanceEmpty"),
+    homePerformancePreview: document.getElementById("homePerformancePreview"),
+    homePerformanceStats: document.getElementById("homePerformanceStats"),
+    homeWeakEmpty: document.getElementById("homeWeakEmpty"),
+    homeWeakPreview: document.getElementById("homeWeakPreview"),
+    homeWeakList: document.getElementById("homeWeakList"),
     thinkTime: document.getElementById("thinkTime"),
     answerTime: document.getElementById("answerTime"),
     thinkQuestion: document.getElementById("thinkQuestion"),
@@ -70,6 +78,9 @@
     answerInterval: null,
     thinkRemaining: 0,
     answerRemaining: 0,
+    folderSubject: null,
+    folderSubfolderFilter: "",
+    editingNoteId: null,
   };
 
   function loadStorage(key, fallback) {
@@ -197,10 +208,6 @@
   }
 
   function updateUI() {
-    document.querySelectorAll(".nav-btn").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.route === state.route);
-    });
-
     const inSession = state.sessionRoute && SESSION_ROUTES.includes(state.sessionRoute);
     if (elements.progressBar) {
       elements.progressBar.classList.toggle("hidden", !inSession);
@@ -233,6 +240,9 @@
       case "subjects":
         renderSubjects();
         break;
+      case "folder":
+        renderFolder();
+        break;
       case "performance":
         renderPerformance();
         break;
@@ -256,18 +266,240 @@
       elements.continueEmpty.hidden = false;
       elements.continueContent.hidden = true;
     }
-  }
 
-  function renderSubjects() {
-    elements.subjectGrid.innerHTML = "";
+    elements.homeSubjectGrid.innerHTML = "";
     Object.keys(QUESTIONS_BY_TOPIC).forEach((topic) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "subject-btn";
       btn.textContent = topic;
       btn.addEventListener("click", () => selectTopic(topic));
-      elements.subjectGrid.appendChild(btn);
+      elements.homeSubjectGrid.appendChild(btn);
     });
+
+    const history = loadStorage(STORAGE_KEYS.sessionHistory, []);
+    if (history.length > 0) {
+      elements.homePerformanceEmpty.hidden = true;
+      elements.homePerformancePreview.hidden = false;
+      const byTopic = {};
+      history.slice(0, 5).forEach((h) => {
+        byTopic[h.topic] = (byTopic[h.topic] || 0) + 1;
+      });
+      elements.homePerformanceStats.innerHTML = Object.entries(byTopic)
+        .map(
+          ([t, n]) =>
+            `<div class="performance-row"><strong>${escapeHtml(t)}</strong><span>${n}</span></div>`
+        )
+        .join("");
+    } else {
+      elements.homePerformanceEmpty.hidden = false;
+      elements.homePerformancePreview.hidden = true;
+    }
+
+    const weak = getWeakAreas();
+    if (weak.length > 0) {
+      elements.homeWeakEmpty.hidden = true;
+      elements.homeWeakPreview.hidden = false;
+      elements.homeWeakList.innerHTML = weak
+        .slice(0, 3)
+        .map(
+          (w) =>
+            `<li>${escapeHtml(w.topic)}: ${escapeHtml(w.question.slice(0, 30))}${w.question.length > 30 ? "…" : ""}</li>`
+        )
+        .join("");
+    } else {
+      elements.homeWeakEmpty.hidden = false;
+      elements.homeWeakPreview.hidden = true;
+    }
+  }
+
+  function renderSubjects() {
+    elements.subjectGrid.innerHTML = "";
+    Object.keys(QUESTIONS_BY_TOPIC).forEach((topic) => {
+      const card = document.createElement("div");
+      card.className = "subject-card";
+      card.innerHTML = `
+        <span class="subject-name">${escapeHtml(topic)}</span>
+        <div class="subject-card-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-action="practice" data-topic="${escapeHtml(topic)}">Practice</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="folder" data-topic="${escapeHtml(topic)}">Folder</button>
+        </div>
+      `;
+      card.querySelector('[data-action="practice"]').addEventListener("click", () => selectTopic(topic));
+      card.querySelector('[data-action="folder"]').addEventListener("click", () => openFolder(topic));
+      elements.subjectGrid.appendChild(card);
+    });
+  }
+
+  function openFolder(subject) {
+    state.folderSubject = subject;
+    state.folderSubfolderFilter = "";
+    navigate("folder");
+  }
+
+  async function renderFolder() {
+    if (!state.folderSubject) return;
+    const subject = state.folderSubject;
+    document.getElementById("folderSubjectTitle").textContent = subject + " — Notes & files";
+
+    const items = await getAllBySubject(subject);
+    const subfolders = await getSubfolders(subject);
+    const select = document.getElementById("folderSubfolder");
+    select.innerHTML = '<option value="">All</option>' + subfolders.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    select.value = state.folderSubfolderFilter;
+    document.getElementById("subfolderDatalist").innerHTML = subfolders.map((s) => `<option value="${escapeHtml(s)}">`).join("");
+
+    const filtered = state.folderSubfolderFilter
+      ? items.filter((i) => (i.subfolder || "") === state.folderSubfolderFilter)
+      : items;
+    filtered.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+    const emptyEl = document.getElementById("folderEmpty");
+    const listEl = document.getElementById("folderItems");
+    if (filtered.length === 0) {
+      emptyEl.hidden = false;
+      listEl.hidden = true;
+    } else {
+      emptyEl.hidden = true;
+      listEl.hidden = false;
+      listEl.innerHTML = filtered
+        .map(
+          (item) => `
+        <li class="folder-item" data-id="${escapeHtml(item.id)}">
+          <span class="folder-item-icon">${item.type === "note" ? "📝" : "📎"}</span>
+          <div class="folder-item-info">
+            <span class="folder-item-name">${escapeHtml(item.name)}</span>
+            ${item.subfolder ? `<span class="folder-item-sub">${escapeHtml(item.subfolder)}</span>` : ""}
+          </div>
+          <div class="folder-item-actions">
+            <button type="button" class="btn-icon" data-action="edit" title="Edit">✎</button>
+            <button type="button" class="btn-icon" data-action="open" title="Open">→</button>
+            <button type="button" class="btn-icon btn-icon-danger" data-action="delete" title="Delete">×</button>
+          </div>
+        </li>
+      `
+        )
+        .join("");
+      listEl.querySelectorAll(".folder-item").forEach((li) => {
+        const id = li.dataset.id;
+        li.querySelector('[data-action="edit"]').addEventListener("click", () => openNoteEditor(id));
+        li.querySelector('[data-action="open"]').addEventListener("click", () => openItem(id));
+        li.querySelector('[data-action="delete"]').addEventListener("click", () => deleteFolderItem(id));
+      });
+    }
+  }
+
+  async function openItem(id) {
+    const item = await getItem(id);
+    if (!item) return;
+    if (item.type === "note") {
+      openNoteEditor(id);
+    } else {
+      const blob = item.content instanceof Blob ? item.content : new Blob([item.content], { type: item.mimeType || "application/octet-stream" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = item.name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  }
+
+  function openNoteEditor(id) {
+    state.editingNoteId = id || null;
+    const modal = document.getElementById("noteModal");
+    const titleEl = document.getElementById("noteTitle");
+    const contentEl = document.getElementById("noteContent");
+    const subfolderEl = document.getElementById("noteSubfolder");
+    if (id) {
+      getItem(id).then((item) => {
+        titleEl.value = item.name;
+        contentEl.value = item.content || "";
+        subfolderEl.value = item.subfolder || "";
+        modal.hidden = false;
+        titleEl.focus();
+      });
+    } else {
+      titleEl.value = "";
+      contentEl.value = "";
+      subfolderEl.value = state.folderSubfolderFilter || "";
+      modal.hidden = false;
+      titleEl.focus();
+    }
+  }
+
+  function closeNoteEditor() {
+    document.getElementById("noteModal").hidden = true;
+    state.editingNoteId = null;
+  }
+
+  async function saveNote() {
+    const title = document.getElementById("noteTitle").value.trim();
+    const content = document.getElementById("noteContent").value;
+    const subfolder = document.getElementById("noteSubfolder").value.trim();
+    if (!title) return;
+    if (state.editingNoteId) {
+      await updateItem(state.editingNoteId, { name: title, content, subfolder });
+    } else {
+      await addItem({
+        subject: state.folderSubject,
+        name: title,
+        type: "note",
+        content,
+        subfolder,
+      });
+    }
+    closeNoteEditor();
+    renderFolder();
+  }
+
+  async function deleteFolderItem(id) {
+    if (!confirm("Delete this item?")) return;
+    await deleteItem(id);
+    if (state.editingNoteId === id) closeNoteEditor();
+    renderFolder();
+  }
+
+  async function handleFileUpload(files) {
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`"${file.name}" is too large (max 10 MB).`);
+        continue;
+      }
+      const content = await readFileAsBlob(file);
+      await addItem({
+        subject: state.folderSubject,
+        name: file.name,
+        type: "file",
+        content,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+      });
+    }
+    document.getElementById("fileUpload").value = "";
+    renderFolder();
+  }
+
+  function readFileAsBlob(file) {
+    return new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  async function createSubfolder() {
+    const name = document.getElementById("newSubfolderName").value.trim();
+    if (!name) return;
+    await addItem({
+      subject: state.folderSubject,
+      name: "New note",
+      type: "note",
+      content: "",
+      subfolder: name,
+    });
+    document.getElementById("subfolderModal").hidden = true;
+    document.getElementById("newSubfolderName").value = "";
+    renderFolder();
   }
 
   function renderPerformance() {
@@ -481,9 +713,44 @@
   }
 
   /* Wire all buttons */
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => navigate(btn.dataset.route));
+  document.getElementById("logoHome").addEventListener("click", () => navigate("home"));
+  document.getElementById("btnSettings").addEventListener("click", () => navigate("settings"));
+  document.getElementById("btnBackFromSubjects").addEventListener("click", () => navigate("home"));
+  document.getElementById("btnBackFromFolder").addEventListener("click", () => navigate("subjects"));
+
+  document.getElementById("folderSubfolder").addEventListener("change", (e) => {
+    state.folderSubfolderFilter = e.target.value;
+    renderFolder();
   });
+  document.getElementById("btnNewSubfolder").addEventListener("click", () => {
+    document.getElementById("subfolderModal").hidden = false;
+    document.getElementById("newSubfolderName").value = "";
+    document.getElementById("newSubfolderName").focus();
+  });
+  document.getElementById("btnAddNote").addEventListener("click", () => openNoteEditor(null));
+  document.getElementById("fileUpload").addEventListener("change", (e) => {
+    if (e.target.files.length) handleFileUpload(Array.from(e.target.files));
+  });
+  document.getElementById("btnPracticeFromFolder").addEventListener("click", () => {
+    if (state.folderSubject) selectTopic(state.folderSubject);
+  });
+
+  document.getElementById("btnCloseNote").addEventListener("click", closeNoteEditor);
+  document.getElementById("noteModal").querySelector(".modal-backdrop").addEventListener("click", closeNoteEditor);
+  document.getElementById("btnSaveNote").addEventListener("click", saveNote);
+  document.getElementById("btnDeleteNote").addEventListener("click", () => {
+    if (state.editingNoteId) deleteFolderItem(state.editingNoteId);
+  });
+  document.getElementById("btnCloseSubfolder").addEventListener("click", () => {
+    document.getElementById("subfolderModal").hidden = true;
+  });
+  document.getElementById("subfolderModal").querySelector(".modal-backdrop").addEventListener("click", () => {
+    document.getElementById("subfolderModal").hidden = true;
+  });
+  document.getElementById("btnCreateSubfolder").addEventListener("click", createSubfolder);
+  document.getElementById("btnBackFromPerformance").addEventListener("click", () => navigate("home"));
+  document.getElementById("btnBackFromWeak").addEventListener("click", () => navigate("home"));
+  document.getElementById("btnBackFromSettings").addEventListener("click", () => navigate("home"));
 
   document.getElementById("btnNavToSubjects").addEventListener("click", () => navigate("subjects"));
   document.getElementById("btnNavToPerformance").addEventListener("click", () => navigate("performance"));

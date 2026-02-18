@@ -9,41 +9,56 @@
 <body>
   <div class="app">
     <header class="header">
-      <h1 class="logo">Oral Exam Tutor</h1>
-      <p class="tagline">Practice like the real thing</p>
-      <nav class="nav" aria-label="Main">
-        <button type="button" class="nav-btn" data-route="home">Home</button>
-        <button type="button" class="nav-btn" data-route="subjects">Subjects</button>
-        <button type="button" class="nav-btn" data-route="performance">Performance</button>
-        <button type="button" class="nav-btn" data-route="weak">Weak Areas</button>
-        <button type="button" class="nav-btn" data-route="settings">Settings</button>
-      </nav>
+      <div class="header-left">
+        <h1 class="logo" id="logoHome">Oral Exam Tutor</h1>
+        <p class="tagline">Practice like the real thing</p>
+      </div>
+      <button type="button" class="btn-settings" id="btnSettings" title="Settings">⚙</button>
       <div class="progress-bar" aria-hidden="true">
         <div class="progress-fill" id="progressFill"></div>
       </div>
     </header>
 
     <main class="main">
-      <!-- Home / Dashboard -->
+      <!-- Home / Dashboard: 4 sections, no scroll -->
       <section class="screen screen-home" id="screenHome" data-route="home">
-        <div class="home-sections">
-          <section class="home-section home-continue" id="homeContinue">
-            <h2 class="section-title">Continue Last Session</h2>
-            <div class="continue-card" id="continueCard">
+        <div class="home-grid">
+          <section class="home-tile home-continue" id="homeContinue">
+            <h2 class="tile-title">Continue Last Session</h2>
+            <div class="tile-body" id="continueCard">
               <p class="continue-empty" id="continueEmpty">No session in progress</p>
               <div class="continue-content" id="continueContent" hidden>
                 <p class="continue-topic" id="continueTopic"></p>
                 <p class="continue-progress" id="continueProgress"></p>
-                <button type="button" class="btn btn-primary" id="btnContinueSession">Continue</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnContinueSession">Continue</button>
               </div>
             </div>
           </section>
-          <section class="home-section home-summary">
-            <p class="summary-text">Use the navigation above to access Subjects, Performance, Weak Areas, and Settings.</p>
-            <div class="home-quick-links">
-              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToSubjects">Go to Subjects</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToPerformance">View Performance</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="btnNavToWeak">Review Weak Areas</button>
+          <section class="home-tile home-subjects">
+            <h2 class="tile-title">Subjects</h2>
+            <div class="tile-body">
+              <div class="home-subject-grid" id="homeSubjectGrid"></div>
+              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToSubjects">View all</button>
+            </div>
+          </section>
+          <section class="home-tile home-performance">
+            <h2 class="tile-title">Recent Performance</h2>
+            <div class="tile-body">
+              <p class="performance-empty" id="homePerformanceEmpty">Complete a session to see stats</p>
+              <div class="performance-preview" id="homePerformancePreview" hidden>
+                <div id="homePerformanceStats"></div>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToPerformance">View details</button>
+            </div>
+          </section>
+          <section class="home-tile home-weak">
+            <h2 class="tile-title">Weak Areas</h2>
+            <div class="tile-body">
+              <p class="weak-empty" id="homeWeakEmpty">Flag questions during practice</p>
+              <div class="weak-preview" id="homeWeakPreview" hidden>
+                <ul id="homeWeakList"></ul>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm tile-more" id="btnNavToWeak">View all</button>
             </div>
           </section>
         </div>
@@ -51,7 +66,10 @@
 
       <!-- Subjects (full screen) -->
       <section class="screen screen-subjects" id="screenSubjects" data-route="subjects">
-        <h2 class="screen-title">Subjects</h2>
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromSubjects">← Home</button>
+          <h2 class="screen-title">Subjects</h2>
+        </div>
         <div class="session-settings">
           <label class="setting">
             <span>Think time (sec)</span>
@@ -65,9 +83,86 @@
         <div class="subject-grid" id="subjectGrid"></div>
       </section>
 
+      <!-- Subject Folder: notes & files -->
+      <section class="screen screen-folder" id="screenFolder" data-route="folder">
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromFolder">← Subjects</button>
+          <h2 class="screen-title" id="folderSubjectTitle">Folder</h2>
+        </div>
+        <div class="folder-toolbar">
+          <div class="folder-filter">
+            <label for="folderSubfolder">Subfolder</label>
+            <select id="folderSubfolder">
+              <option value="">All</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnNewSubfolder">+ New subfolder</button>
+        </div>
+        <div class="folder-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="btnAddNote">+ Add note</button>
+          <label class="btn btn-secondary btn-sm folder-upload">
+            + Upload file
+            <input type="file" id="fileUpload" multiple hidden />
+          </label>
+        </div>
+        <div class="folder-list" id="folderList">
+          <p class="folder-empty" id="folderEmpty">No notes or files yet. Add a note or upload a file.</p>
+          <ul class="folder-items" id="folderItems" hidden></ul>
+        </div>
+        <div class="folder-practice">
+          <button type="button" class="btn btn-primary" id="btnPracticeFromFolder">Practice this subject</button>
+        </div>
+      </section>
+
+      <!-- Note editor modal -->
+      <div class="modal" id="noteModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <input type="text" class="modal-title-input" id="noteTitle" placeholder="Note title" />
+            <button type="button" class="modal-close" id="btnCloseNote">×</button>
+          </div>
+          <textarea class="modal-body" id="noteContent" rows="12" placeholder="Write your note…"></textarea>
+          <div class="modal-footer">
+            <label class="setting">
+              <span>Subfolder</span>
+              <input type="text" id="noteSubfolder" placeholder="e.g. Lecture notes" list="subfolderDatalist" />
+              <datalist id="subfolderDatalist"></datalist>
+            </label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnDeleteNote">Delete</button>
+              <button type="button" class="btn btn-primary" id="btnSaveNote">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subfolder create modal -->
+      <div class="modal modal-sm" id="subfolderModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">New subfolder</h3>
+            <button type="button" class="modal-close" id="btnCloseSubfolder">×</button>
+          </div>
+          <div class="modal-body">
+            <label>
+              <span>Name</span>
+              <input type="text" id="newSubfolderName" placeholder="e.g. Lecture notes, Flashcards" />
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnCreateSubfolder">Create</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Performance (full screen) -->
       <section class="screen screen-performance" id="screenPerformance" data-route="performance">
-        <h2 class="screen-title">Recent Performance</h2>
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromPerformance">← Home</button>
+          <h2 class="screen-title">Recent Performance</h2>
+        </div>
         <div class="performance-card-full" id="performanceCardFull">
           <p class="performance-empty" id="performanceEmpty">Complete a session to see your stats</p>
           <div class="performance-content-full" id="performanceContentFull" hidden>
@@ -78,7 +173,10 @@
 
       <!-- Weak Areas (full screen) -->
       <section class="screen screen-weak" id="screenWeak" data-route="weak">
-        <h2 class="screen-title">Saved Weak Areas</h2>
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromWeak">← Home</button>
+          <h2 class="screen-title">Saved Weak Areas</h2>
+        </div>
         <div class="weak-card-full" id="weakCardFull">
           <p class="weak-empty" id="weakEmpty">Flag questions during practice to build this list</p>
           <ul class="weak-list" id="weakList" hidden></ul>
@@ -87,7 +185,10 @@
 
       <!-- Settings (full screen) -->
       <section class="screen screen-settings" id="screenSettings" data-route="settings">
-        <h2 class="screen-title">Settings</h2>
+        <div class="screen-header">
+          <button type="button" class="btn-back" id="btnBackFromSettings">← Home</button>
+          <h2 class="screen-title">Settings</h2>
+        </div>
         <div class="settings-section">
           <h3 class="settings-subtitle">Upcoming Exam</h3>
           <div class="countdown-card" id="countdownCard">
@@ -167,6 +268,7 @@
     </footer>
   </div>
   <script src="questions.js"></script>
+  <script src="db.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
