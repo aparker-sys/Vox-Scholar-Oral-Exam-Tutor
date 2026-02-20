@@ -213,17 +213,28 @@ app.delete("/api/items/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-// Serve static files from project root (whitelist so we don't serve server.js, etc.)
-const allowedFiles = ["index.html", "styles.css", "app.js", "db.js", "questions.js", "api.js"];
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api/")) return next();
-  const name = path.basename(req.path) || "index.html";
-  if (req.path === "/" || req.path === "" || name === "index.html") {
-    return res.sendFile(path.join(__dirname, "index.html"));
-  }
-  if (allowedFiles.includes(name)) return res.sendFile(path.join(__dirname, name));
-  next();
-});
+// Serve React build when present, else 404 for non-API
+const clientDist = path.join(__dirname, "client", "dist");
+const fs = require("fs");
+const hasReactBuild = fs.existsSync(clientDist);
+if (hasReactBuild) {
+  app.use(express.static(clientDist));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+} else {
+  const allowedFiles = ["index.html", "styles.css", "app.js", "db.js", "questions.js", "api.js"];
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+    const name = path.basename(req.path) || "index.html";
+    if (req.path === "/" || req.path === "" || name === "index.html") {
+      return res.sendFile(path.join(__dirname, "index.html"));
+    }
+    if (allowedFiles.includes(name)) return res.sendFile(path.join(__dirname, name));
+    next();
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`Vox Scholar server at http://localhost:${PORT}`);
