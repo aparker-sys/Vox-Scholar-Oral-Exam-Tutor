@@ -13,7 +13,7 @@ import {
   getSubfolders,
   STORAGE_KEYS,
 } from "./api/client";
-import { QUESTIONS_BY_TOPIC } from "./data/questions";
+import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
 
 const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
