@@ -123,6 +123,16 @@ function authRequired(req, res, next) {
 
 const app = express();
 app.use(cors());
+
+// Redirect root domain to www when request reaches this server (e.g. after DNS points root to Railway)
+app.use((req, res, next) => {
+  const host = (req.get("host") || "").split(":")[0];
+  if (host === "oralexamtutor.com") {
+    return res.redirect(301, "https://www.oralexamtutor.com" + (req.originalUrl || "/"));
+  }
+  next();
+});
+
 app.use(express.json({ limit: "10mb" }));
 
 // ----- Public routes -----

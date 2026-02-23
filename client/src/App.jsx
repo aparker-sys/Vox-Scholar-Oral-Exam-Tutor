@@ -16,7 +16,7 @@ import {
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
-import { VoiceTutor, useVoiceTutor, useVoiceOptions, previewVoice } from "./components/VoiceTutor";
+import { VoiceTutor, useVoiceTutor, useVoiceOptions, useSpeechRecognition, useSessionAnswerRecognition, previewVoice } from "./components/VoiceTutor";
 
 const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
 const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
@@ -41,6 +41,8 @@ export default function App() {
   const [thinkRemaining, setThinkRemaining] = useState(0);
   const [answerRemaining, setAnswerRemaining] = useState(0);
   const [answerNotes, setAnswerNotes] = useState("");
+  const [answerTranscripts, setAnswerTranscripts] = useState([]);
+  const [currentAnswerTranscript, setCurrentAnswerTranscript] = useState("");
   const [sessionSummary, setSessionSummary] = useState("");
   const [focusTodayEdit, setFocusTodayEdit] = useState(false);
   const [focusTodayInputVal, setFocusTodayInputVal] = useState("");
@@ -69,6 +71,66 @@ export default function App() {
   const answerIntervalRef = useRef(null);
   const { speak, isSpeaking } = useVoiceTutor();
   const { voiceOptions } = useVoiceOptions();
+
+  const sendToCharlotte = useCallback(
+    async (msg) => {
+      const text = typeof msg === "string" ? msg.trim() : "";
+      if (!text || charlotteLoading) return;
+      setCharlotteLoading(true);
+      setCharlotteError("");
+      try {
+        const reply = await fetchChat(text, charlotteHistory);
+        if (reply) {
+          setCharlotteHistory((h) =>
+            [...h, { role: "user", content: text }, { role: "assistant", content: reply }].slice(-20)
+          );
+          setCharlotteInput("");
+          speak(reply);
+        } else {
+          setCharlotteError("Chat isn't configured. Add OPENAI_API_KEY on the server.");
+        }
+      } catch (err) {
+        setCharlotteError(err.message || "Something went wrong.");
+      } finally {
+        setCharlotteLoading(false);
+      }
+    },
+    [charlotteHistory, charlotteLoading, speak]
+  );
+
+  const {
+    supported: voiceInputSupported,
+    isListening,
+    startListening: startVoiceInput,
+  } = useSpeechRecognition(sendToCharlotte, (err) => setCharlotteError(err || "Voice input failed."));
+
+  const appendToAnswerNotes = useCallback((transcript) => {
+    setAnswerNotes((prev) => (prev ? prev + " " : "") + transcript);
+  }, []);
+  const {
+    supported: dictateSupported,
+    isListening: isDictating,
+    startListening: startDictating,
+  } = useSpeechRecognition(appendToAnswerNotes, () => {});
+
+  const currentAnswerTranscriptRef = useRef("");
+  const appendAnswerChunk = useCallback((chunk) => {
+    setCurrentAnswerTranscript((prev) => {
+      const next = prev ? prev + " " + chunk : chunk;
+      currentAnswerTranscriptRef.current = next;
+      return next;
+    });
+  }, []);
+  const {
+    supported: sessionAnswerRecognitionSupported,
+    isListening: isSessionAnswerListening,
+    start: startSessionAnswerListening,
+    stop: stopSessionAnswerListening,
+  } = useSessionAnswerRecognition(appendAnswerChunk, () => {});
+
+  useEffect(() => {
+    currentAnswerTranscriptRef.current = currentAnswerTranscript;
+  }, [currentAnswerTranscript]);
 
   useEffect(() => {
     initBackend().then(({ backendOk: ok }) => {
@@ -164,6 +226,8 @@ export default function App() {
     setRoute("folder");
   }, []);
 
+  const lastSpokenQuestionRef = useRef(null);
+
   const selectTopic = useCallback(
     (t) => {
       if (!QUESTIONS_BY_TOPIC[t]) return;
@@ -174,42 +238,41 @@ export default function App() {
       setQuestionOrder(shuffled.map((q) => q._idx));
       setCurrentIndex(0);
       setAnswerNotes("");
+      setAnswerTranscripts([]);
+      setCurrentAnswerTranscript("");
       saveLastSession();
       setSessionRoute("think");
-      setThinkRemaining(Math.max(5, thinkTime));
+      lastSpokenQuestionRef.current = null;
     },
-    [thinkTime, saveLastSession]
+    [saveLastSession]
   );
 
   useEffect(() => {
-    if (sessionRoute !== "think" || !questions.length) return;
-    const secs = Math.max(5, thinkTime);
-    setThinkRemaining(secs);
-    if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
-    thinkIntervalRef.current = setInterval(() => {
-      setThinkRemaining((prev) => {
-        if (prev <= 1) {
-          if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
-          thinkIntervalRef.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => {
-      if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
-    };
-  }, [sessionRoute, currentIndex, thinkTime]);
+    if (sessionRoute !== "think" || !currentQuestion || !questions.length) return;
+    const key = `${currentIndex}-${currentQuestion.question}`;
+    if (lastSpokenQuestionRef.current === key) return;
+    lastSpokenQuestionRef.current = key;
+    speak(currentQuestion.question);
+  }, [sessionRoute, currentIndex, currentQuestion, questions.length, speak]);
 
   const onStartAnswer = useCallback(() => {
-    if (thinkIntervalRef.current) {
-      clearInterval(thinkIntervalRef.current);
-      thinkIntervalRef.current = null;
-    }
+    setCurrentAnswerTranscript("");
     setSessionRoute("answer");
-    setAnswerNotes("");
     setAnswerRemaining(Math.max(30, answerTime));
-  }, [answerTime]);
+    startSessionAnswerListening();
+  }, [answerTime, startSessionAnswerListening]);
+
+  const saveCurrentTranscriptAndLeaveAnswer = useCallback(() => {
+    stopSessionAnswerListening();
+    const transcript = currentAnswerTranscriptRef.current;
+    setAnswerTranscripts((prev) => {
+      const next = [...prev];
+      next[currentIndex] = transcript;
+      return next;
+    });
+    setCurrentAnswerTranscript("");
+    currentAnswerTranscriptRef.current = "";
+  }, [currentIndex, stopSessionAnswerListening]);
 
   useEffect(() => {
     if (sessionRoute !== "answer") return;
@@ -236,8 +299,9 @@ export default function App() {
       clearInterval(answerIntervalRef.current);
       answerIntervalRef.current = null;
     }
+    if (sessionRoute === "answer") saveCurrentTranscriptAndLeaveAnswer();
     setSessionRoute("feedback");
-  }, []);
+  }, [sessionRoute, saveCurrentTranscriptAndLeaveAnswer]);
 
   const nextOrComplete = useCallback(() => {
     const nextIndex = currentIndex + 1;
@@ -251,16 +315,17 @@ export default function App() {
       setSessionRoute("complete");
     } else {
       saveLastSession();
+      lastSpokenQuestionRef.current = null;
       setSessionRoute("think");
-      setThinkRemaining(Math.max(5, thinkTime));
     }
-  }, [currentIndex, questions.length, topic, subjectRenames, thinkTime, saveLastSession, addSessionToHistory]);
+  }, [currentIndex, questions.length, topic, subjectRenames, saveLastSession, addSessionToHistory]);
 
   const endSession = useCallback(() => {
     if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
     if (answerIntervalRef.current) clearInterval(answerIntervalRef.current);
     thinkIntervalRef.current = null;
     answerIntervalRef.current = null;
+    if (sessionRoute === "answer") saveCurrentTranscriptAndLeaveAnswer();
     clearLastSessionStorage();
     addSessionToHistory(topic || "Unknown", false);
     setSessionRoute(null);
@@ -268,7 +333,7 @@ export default function App() {
     setQuestions([]);
     setCurrentIndex(0);
     setRoute("home");
-  }, [topic, addSessionToHistory]);
+  }, [topic, sessionRoute, addSessionToHistory, saveCurrentTranscriptAndLeaveAnswer]);
 
   const backToHome = useCallback(() => {
     if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
@@ -277,6 +342,8 @@ export default function App() {
     setTopic(null);
     setQuestions([]);
     setCurrentIndex(0);
+    setAnswerTranscripts([]);
+    setCurrentAnswerTranscript("");
     setRoute("home");
   }, []);
 
@@ -285,6 +352,8 @@ export default function App() {
     setTopic(null);
     setQuestions([]);
     setCurrentIndex(0);
+    setAnswerTranscripts([]);
+    setCurrentAnswerTranscript("");
     setRoute("subjects");
   }, []);
 
@@ -422,29 +491,26 @@ export default function App() {
                   </button>
                 </div>
                 <div className="charlotte-chat">
-                  <p className="charlotte-chat-hint">Ask Charlotte anything—she’ll reply and can read it aloud.</p>
+                  <p className="charlotte-chat-hint">Ask Charlotte anything—type or tap the mic to talk; she'll reply and can read it aloud.</p>
+                  {voiceInputSupported && (
+                    <div className="charlotte-voice-input">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm charlotte-mic-btn"
+                        onClick={startVoiceInput}
+                        disabled={charlotteLoading || isSpeaking || isListening}
+                        title="Talk to Charlotte"
+                        aria-label={isListening ? "Listening…" : "Talk to Charlotte"}
+                      >
+                        {isListening ? "Listening…" : "🎤 Talk to Charlotte"}
+                      </button>
+                    </div>
+                  )}
                   <form
                     className="charlotte-chat-form"
-                    onSubmit={async (e) => {
+                    onSubmit={(e) => {
                       e.preventDefault();
-                      const msg = charlotteInput.trim();
-                      if (!msg || charlotteLoading) return;
-                      setCharlotteLoading(true);
-                      setCharlotteError("");
-                      try {
-                        const reply = await fetchChat(msg, charlotteHistory);
-                        if (reply) {
-                          setCharlotteHistory((h) => [...h, { role: "user", content: msg }, { role: "assistant", content: reply }].slice(-20));
-                          setCharlotteInput("");
-                          speak(reply);
-                        } else {
-                          setCharlotteError("Chat isn’t configured. Add OPENAI_API_KEY on the server.");
-                        }
-                      } catch (err) {
-                        setCharlotteError(err.message || "Something went wrong.");
-                      } finally {
-                        setCharlotteLoading(false);
-                      }
+                      sendToCharlotte(charlotteInput);
                     }}
                   >
                     <input
@@ -505,7 +571,7 @@ export default function App() {
                             setQuestionOrder(last.questionOrder);
                             setCurrentIndex(last.currentIndex);
                             setSessionRoute("think");
-                            setThinkRemaining(Math.max(5, thinkTime));
+                            lastSpokenQuestionRef.current = null;
                           }}
                         >
                           Continue
@@ -906,15 +972,15 @@ export default function App() {
           </section>
         )}
 
-        {/* Session: Think */}
+        {/* Session: Charlotte asks question, then user clicks Start answering */}
         {sessionRoute === "think" && currentQuestion && (
           <section className="screen screen-think screen-session active">
-            <p className="phase-label">Think</p>
+            <p className="phase-label">Charlotte asks</p>
             <div className="session-voice-tutor">
               <VoiceTutor
                 isSpeaking={isSpeaking}
-                label="Read question aloud"
-                idleMessage="Read question aloud"
+                label="Charlotte"
+                idleMessage="Listen for the question"
                 size="small"
               />
               <button
@@ -923,13 +989,10 @@ export default function App() {
                 onClick={() => speak(currentQuestion.question)}
                 disabled={isSpeaking}
               >
-                {isSpeaking ? "Speaking…" : "Read question aloud"}
+                {isSpeaking ? "Speaking…" : "Hear question again"}
               </button>
             </div>
             <p className="question-text">{currentQuestion.question}</p>
-            <div className="timer think-timer">
-              <span className="timer-value">{formatTime(thinkRemaining)}</span>
-            </div>
             <div className="session-actions">
               <button type="button" className="btn btn-primary" onClick={onStartAnswer}>
                 Start answering
@@ -941,7 +1004,7 @@ export default function App() {
           </section>
         )}
 
-        {/* Session: Answer */}
+        {/* Session: Answer — Charlotte listens; transcript hidden until session complete */}
         {sessionRoute === "answer" && currentQuestion && (
           <section className="screen screen-answer screen-session active">
             <p className="phase-label">Answer</p>
@@ -949,15 +1012,19 @@ export default function App() {
             <div className={`timer answer-timer ${answerRemaining <= 30 ? "warning" : ""}`}>
               <span className="timer-value">{formatTime(answerRemaining)}</span>
             </div>
-            <div className="answer-notes">
-              <label htmlFor="answerNotes">Your notes / outline (optional)</label>
-              <textarea
-                id="answerNotes"
-                rows={4}
-                placeholder="Jot key points as you speak…"
-                value={answerNotes}
-                onChange={(e) => setAnswerNotes(e.target.value)}
-              />
+            <div className="answer-listening-area">
+              {sessionAnswerRecognitionSupported ? (
+                <div className={`answer-listening-indicator ${isSessionAnswerListening ? "active" : ""}`}>
+                  <span className="answer-listening-icon" aria-hidden>🎤</span>
+                  <p className="answer-listening-text">
+                    {isSessionAnswerListening
+                      ? "Charlotte is listening… Your response will be shown after the session."
+                      : "Listening will start when you press Start answering."}
+                  </p>
+                </div>
+              ) : (
+                <p className="answer-listening-fallback">Voice capture is not supported in this browser. Use a supported browser to have your answer recorded.</p>
+              )}
             </div>
             <div className="session-actions">
               <button type="button" className="btn btn-secondary" onClick={onNextQuestion}>
@@ -1014,7 +1081,7 @@ export default function App() {
           </section>
         )}
 
-        {/* Session: Complete */}
+        {/* Session: Complete — show summary and what you said for each question */}
         {sessionRoute === "complete" && (
           <section className="screen screen-complete screen-session active">
             <h2>Session complete</h2>
@@ -1030,6 +1097,17 @@ export default function App() {
               </button>
             </div>
             <p className="summary">{sessionSummary}</p>
+            {questions.length > 0 && answerTranscripts.some(Boolean) && (
+              <div className="complete-transcripts">
+                <h3>What you said</h3>
+                {questions.map((q, i) => (
+                  <div key={i} className="complete-transcript-block">
+                    <p className="complete-transcript-question">{i + 1}. {q.question}</p>
+                    <p className="complete-transcript-answer">{answerTranscripts[i] || "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="complete-actions">
               <button type="button" className="btn btn-primary" onClick={backToHome}>
                 Back to home

@@ -45,9 +45,12 @@ function runApp() {
     thinkTimerValue: document.getElementById("thinkTimerValue"),
     answerTimer: document.getElementById("answerTimer"),
     answerTimerValue: document.getElementById("answerTimerValue"),
-    answerNotes: document.getElementById("answerNotes"),
+    answerListeningIndicator: document.getElementById("answerListeningIndicator"),
+    answerListeningText: document.getElementById("answerListeningText"),
+    answerListeningUnsupported: document.getElementById("answerListeningUnsupported"),
     keyPoints: document.getElementById("keyPoints"),
     sessionSummary: document.getElementById("sessionSummary"),
+    completeTranscripts: document.getElementById("completeTranscripts"),
     progressFill: document.getElementById("progressFill"),
     questionCounter: document.getElementById("questionCounter"),
     continueEmpty: document.getElementById("continueEmpty"),
@@ -87,6 +90,10 @@ function runApp() {
     answerInterval: null,
     thinkRemaining: 0,
     answerRemaining: 0,
+    answerTranscripts: [],
+    currentAnswerTranscript: "",
+    answerRecognition: null,
+    isAnswerListening: false,
     folderSubject: null,
     folderSubfolderFilter: "",
     folderBackRoute: "subjects",
@@ -264,6 +271,9 @@ function runApp() {
     state.topic = null;
     state.questions = [];
     state.currentIndex = 0;
+    state.answerTranscripts = [];
+    state.currentAnswerTranscript = "";
+    stopAnswerListening();
     stopThinkTimer();
     stopAnswerTimer();
     updateProgress();
@@ -767,6 +777,78 @@ function runApp() {
     }
   }
 
+  function isSpeechRecognitionSupported() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  }
+
+  function startAnswerListening() {
+    if (!isSpeechRecognitionSupported()) {
+      if (elements.answerListeningIndicator) elements.answerListeningIndicator.hidden = true;
+      if (elements.answerListeningUnsupported) elements.answerListeningUnsupported.hidden = false;
+      return;
+    }
+    if (state.answerRecognition) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    state.currentAnswerTranscript = "";
+    recognition.onresult = function (event) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal && result[0] && result[0].transcript) {
+          const t = result[0].transcript.trim();
+          if (t) state.currentAnswerTranscript += (state.currentAnswerTranscript ? " " : "") + t;
+        }
+      }
+    };
+    recognition.onend = function () {
+      state.isAnswerListening = false;
+      if (elements.answerListeningIndicator) {
+        elements.answerListeningIndicator.classList.remove("active");
+        if (elements.answerListeningText) elements.answerListeningText.textContent = "Listening paused. Your response will be shown after the session.";
+      }
+    };
+    recognition.onerror = function (event) {
+      if (event.error !== "aborted") state.isAnswerListening = false;
+      if (elements.answerListeningIndicator) elements.answerListeningIndicator.classList.remove("active");
+    };
+    try {
+      recognition.start();
+      state.answerRecognition = recognition;
+      state.isAnswerListening = true;
+      if (elements.answerListeningIndicator) {
+        elements.answerListeningIndicator.hidden = false;
+        elements.answerListeningIndicator.classList.add("active");
+        if (elements.answerListeningText) elements.answerListeningText.textContent = "Charlotte is listening… Your response will be shown after the session.";
+      }
+      if (elements.answerListeningUnsupported) elements.answerListeningUnsupported.hidden = true;
+    } catch (e) {
+      if (elements.answerListeningText) elements.answerListeningText.textContent = "Could not start microphone. Check permissions and try again.";
+    }
+  }
+
+  function stopAnswerListening() {
+    if (state.answerRecognition) {
+      try { state.answerRecognition.stop(); } catch (_) {}
+      state.answerRecognition = null;
+    }
+    state.isAnswerListening = false;
+    if (elements.answerListeningIndicator) {
+      elements.answerListeningIndicator.classList.remove("active");
+      if (elements.answerListeningText) elements.answerListeningText.textContent = "Charlotte is listening… Your response will be shown after the session.";
+    }
+  }
+
+  function saveCurrentTranscript() {
+    stopAnswerListening();
+    if (state.questions[state.currentIndex] !== undefined) {
+      state.answerTranscripts[state.currentIndex] = state.currentAnswerTranscript;
+    }
+    state.currentAnswerTranscript = "";
+  }
+
   function selectTopic(topic) {
     if (!QUESTIONS_BY_TOPIC[topic]) return;
     state.topic = topic;
@@ -774,7 +856,8 @@ function runApp() {
     state.questions = shuffleArray(raw.map((q, i) => ({ ...q, _idx: i })));
     state.questionOrder = state.questions.map((q) => q._idx);
     state.currentIndex = 0;
-    elements.answerNotes.value = "";
+    state.answerTranscripts = [];
+    state.currentAnswerTranscript = "";
     saveLastSession();
     updateProgress();
     updateCounter();
@@ -792,7 +875,8 @@ function runApp() {
     state.questions = last.questionOrder.map((i) => ({ ...raw[i], _idx: i }));
     state.questionOrder = last.questionOrder;
     state.currentIndex = last.currentIndex;
-    elements.answerNotes.value = "";
+    state.answerTranscripts = [];
+    state.currentAnswerTranscript = "";
     updateProgress();
     updateCounter();
     showSessionScreen("think");
@@ -805,13 +889,14 @@ function runApp() {
     stopThinkTimer();
     const q = state.questions[state.currentIndex];
     elements.answerQuestion.textContent = q.question;
-    elements.answerNotes.value = "";
     showSessionScreen("answer");
     startAnswerTimer();
+    startAnswerListening();
   }
 
   function onNextQuestion() {
     stopAnswerTimer();
+    if (state.sessionRoute === "answer") saveCurrentTranscript();
     saveLastSession();
     const q = state.questions[state.currentIndex];
     elements.feedbackQuestion.textContent = q.question;
@@ -828,6 +913,18 @@ function runApp() {
       addSessionToHistory(state.topic, true);
       const total = state.questions.length;
       elements.sessionSummary.textContent = `You completed ${total} question${total === 1 ? "" : "s"} on "${state.topic}". Great work.`;
+      if (elements.completeTranscripts) {
+        const hasAny = state.answerTranscripts.some(Boolean);
+        if (hasAny && state.questions.length) {
+          elements.completeTranscripts.innerHTML = "<h3>What you said</h3>" + state.questions.map(function (q, i) {
+            return "<div class=\"complete-transcript-block\"><p class=\"complete-transcript-question\">" + (i + 1) + ". " + escapeHtml(q.question) + "</p><p class=\"complete-transcript-answer\">" + escapeHtml(state.answerTranscripts[i] || "—") + "</p></div>";
+          }).join("");
+          elements.completeTranscripts.hidden = false;
+        } else {
+          elements.completeTranscripts.innerHTML = "";
+          elements.completeTranscripts.hidden = true;
+        }
+      }
       elements.questionCounter.textContent = "";
       showSessionScreen("complete");
     } else {
@@ -842,6 +939,7 @@ function runApp() {
   function endSession() {
     stopThinkTimer();
     stopAnswerTimer();
+    if (state.sessionRoute === "answer") saveCurrentTranscript();
     clearLastSession();
     addSessionToHistory(state.topic || "Unknown", false);
     exitSession();

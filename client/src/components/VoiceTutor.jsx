@@ -482,4 +482,149 @@ export function useVoiceTutor() {
   return { speak, isSpeaking };
 }
 
+/** Check if the browser supports speech recognition (voice input). */
+function isSpeechRecognitionSupported() {
+  if (typeof window === "undefined") return false;
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+/**
+ * Hook for voice input: listen to the user and call onResult with the transcript.
+ * Use this so users can talk to Charlotte instead of only typing.
+ * Returns { supported, isListening, startListening, stopListening }.
+ */
+export function useSpeechRecognition(onResult, onError) {
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const onResultRef = useRef(onResult);
+  const onErrorRef = useRef(onError);
+  onResultRef.current = onResult;
+  onErrorRef.current = onError;
+
+  useEffect(() => {
+    if (!isSpeechRecognitionSupported()) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      const result = event.results[event.resultIndex];
+      const transcript = result?.isFinal ? result[0]?.transcript?.trim() : "";
+      if (transcript) onResultRef.current?.(transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      if (event.error !== "aborted") onErrorRef.current?.(event.error);
+    };
+
+    recognitionRef.current = recognition;
+    return () => {
+      try {
+        recognition.stop();
+      } catch (_) {}
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current || isListening) return;
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      onErrorRef.current?.(e.message || "Could not start listening");
+    }
+  }, [isListening]);
+
+  const stopListening = useCallback(() => {
+    if (!recognitionRef.current || !isListening) return;
+    try {
+      recognitionRef.current.stop();
+    } catch (_) {}
+    setIsListening(false);
+  }, [isListening]);
+
+  return {
+    supported: isSpeechRecognitionSupported(),
+    isListening,
+    startListening,
+    stopListening,
+  };
+}
+
+/**
+ * Continuous speech recognition for the practice answer phase.
+ * When active, listens and appends each final transcript chunk via onChunk.
+ * Call start() when user clicks "Start answering"; call stop() when leaving answer phase.
+ * Returns { isListening, start, stop, supported }.
+ */
+export function useSessionAnswerRecognition(onChunk, onError) {
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const onChunkRef = useRef(onChunk);
+  const onErrorRef = useRef(onError);
+  onChunkRef.current = onChunk;
+  onErrorRef.current = onError;
+
+  useEffect(() => {
+    if (!isSpeechRecognitionSupported()) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal && result[0]?.transcript) {
+          const transcript = result[0].transcript.trim();
+          if (transcript) onChunkRef.current?.(transcript);
+        }
+      }
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      if (event.error !== "aborted") onErrorRef.current?.(event.error);
+    };
+
+    recognitionRef.current = recognition;
+    return () => {
+      try {
+        recognition.abort();
+      } catch (_) {}
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  const start = useCallback(() => {
+    if (!recognitionRef.current || isListening) return;
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      onErrorRef.current?.(e.message || "Could not start listening");
+    }
+  }, [isListening]);
+
+  const stop = useCallback(() => {
+    if (!recognitionRef.current) return;
+    try {
+      recognitionRef.current.stop();
+    } catch (_) {}
+    setIsListening(false);
+  }, []);
+
+  return {
+    supported: isSpeechRecognitionSupported(),
+    isListening,
+    start,
+    stop,
+  };
+}
+
 export default VoiceTutor;

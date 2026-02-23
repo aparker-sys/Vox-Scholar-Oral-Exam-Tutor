@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vox Scholar — Prep Smarter</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -363,16 +363,19 @@
         </div>
       </section>
 
-      <!-- Answer phase -->
+      <!-- Answer phase: Charlotte listens; transcript shown after session -->
       <section class="screen screen-answer screen-session" id="screenAnswer">
         <p class="phase-label">Answer</p>
         <p class="question-text" id="answerQuestion"></p>
         <div class="timer answer-timer" id="answerTimer">
           <span class="timer-value" id="answerTimerValue"></span>
         </div>
-        <div class="answer-notes">
-          <label for="answerNotes">Your notes / outline (optional)</label>
-          <textarea id="answerNotes" rows="4" placeholder="Jot key points as you speak…"></textarea>
+        <div class="answer-listening-area" id="answerListeningArea">
+          <div class="answer-listening-indicator" id="answerListeningIndicator">
+            <span class="answer-listening-icon" aria-hidden>🎤</span>
+            <p class="answer-listening-text" id="answerListeningText">Charlotte is listening… Your response will be shown after the session.</p>
+          </div>
+          <p class="answer-listening-unsupported" id="answerListeningUnsupported" hidden>Voice capture is not supported in this browser. Try Chrome, Edge, or Safari.</p>
         </div>
         <div class="session-actions">
           <button type="button" class="btn btn-secondary" id="btnNextQuestion">Next question</button>
@@ -396,6 +399,7 @@
       <section class="screen screen-complete screen-session" id="screenComplete">
         <h2>Session complete</h2>
         <p class="summary" id="sessionSummary"></p>
+        <div class="complete-transcripts" id="completeTranscripts"></div>
         <div class="complete-actions">
           <button type="button" class="btn btn-primary" id="btnBackToHome">Back to home</button>
           <button type="button" class="btn btn-secondary" id="btnPracticeMore">Practice another subject</button>
@@ -407,9 +411,9 @@
       <span id="questionCounter"></span>
     </footer>
   </div>
-  <script src="questions.js"></script>
-  <script src="db.js"></script>
-  <script src="api.js"></script>
-  <script src="app.js"></script>
+  <script src="questions.js?v=2"></script>
+  <script src="db.js?v=2"></script>
+  <script src="api.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
