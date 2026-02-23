@@ -1,6 +1,7 @@
 import * as idb from "./indexedDb.js";
 
 const API_BASE = "";
+const TOKEN_KEY = "vox_scholar_token";
 const STORAGE_KEYS = {
   lastSession: "oralExam_lastSession",
   sessionHistory: "oralExam_sessionHistory",
@@ -11,21 +12,104 @@ const STORAGE_KEYS = {
 };
 
 let USE_BACKEND = false;
+let AUTH_TOKEN = null;
 const CACHE = {};
+
+function getToken() {
+  if (AUTH_TOKEN) return AUTH_TOKEN;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token) {
+  AUTH_TOKEN = token;
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (_) {}
+}
+
+export function clearToken() {
+  setToken(null);
+  USE_BACKEND = false;
+}
 
 export async function fetchApi(method, path, body) {
   const opts = { method, headers: {} };
+  const token = getToken();
+  if (token) opts.headers["Authorization"] = "Bearer " + token;
   if (body !== undefined) opts.headers["Content-Type"] = "application/json";
   if (body !== undefined && method !== "GET") opts.body = JSON.stringify(body);
   const res = await fetch(API_BASE + path, opts);
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Unauthorized");
+  }
   if (!res.ok) throw new Error(res.statusText);
   if (res.status === 204 || res.headers.get("content-length") === "0") return null;
   return res.json();
 }
 
+// Auth API
+export async function login(email, password) {
+  const res = await fetch(API_BASE + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Login failed");
+  setToken(data.token);
+  USE_BACKEND = true;
+  return data.user;
+}
+
+export async function signup(email, password, name) {
+  const res = await fetch(API_BASE + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password,
+      name: (name || "").trim(),
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Signup failed");
+  setToken(data.token);
+  USE_BACKEND = true;
+  return data.user;
+}
+
+export async function getMe() {
+  const user = await fetchApi("GET", "/api/auth/me");
+  return user;
+}
+
+export async function putOnboarding(body) {
+  const user = await fetchApi("PUT", "/api/auth/onboarding", body);
+  return user;
+}
+
 export async function initBackend() {
   try {
     await fetch(API_BASE + "/api/health");
+  } catch (_) {
+    USE_BACKEND = false;
+    return { user: null, needsOnboarding: false, backendOk: false };
+  }
+  const token = getToken();
+  if (!token) {
+    USE_BACKEND = false;
+    return { user: null, needsOnboarding: false, backendOk: true };
+  }
+  try {
+    setToken(token);
+    const user = await getMe();
+    USE_BACKEND = true;
     const [lastSession, sessionHistory, weakAreas, settings] = await Promise.all([
       fetchApi("GET", "/api/last-session"),
       fetchApi("GET", "/api/session-history"),
@@ -38,9 +122,10 @@ export async function initBackend() {
     CACHE[STORAGE_KEYS.examDate] = settings?.examDate ?? null;
     CACHE[STORAGE_KEYS.focusToday] = settings?.focusToday ?? null;
     CACHE[STORAGE_KEYS.customSubjects] = settings?.customSubjects ?? [];
-    USE_BACKEND = true;
+    return { user, needsOnboarding: !user.onboardingComplete, backendOk: true };
   } catch (_) {
     USE_BACKEND = false;
+    return { user: null, needsOnboarding: false, backendOk: true };
   }
 }
 
@@ -100,7 +185,10 @@ export function clearLastSessionStorage() {
     localStorage.removeItem(STORAGE_KEYS.lastSession);
     return;
   }
-  fetch(API_BASE + "/api/last-session", { method: "DELETE" }).catch(() => {});
+  fetch(API_BASE + "/api/last-session", {
+    method: "DELETE",
+    headers: getToken() ? { Authorization: "Bearer " + getToken() } : {},
+  }).catch(() => {});
 }
 
 export async function getAllBySubject(subject) {
@@ -120,9 +208,11 @@ export async function getItem(id) {
   const item = await fetchApi("GET", "/api/items/" + encodeURIComponent(id));
   if (!item) return null;
   if (item.type === "file" && item.content) {
-    const buf = await fetch(
-      API_BASE + "/api/items/" + encodeURIComponent(id) + "/download"
-    ).then((r) => r.arrayBuffer());
+    const token = getToken();
+    const res = await fetch(API_BASE + "/api/items/" + encodeURIComponent(id) + "/download", {
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    const buf = await res.arrayBuffer();
     item.content = buf;
   }
   return item;
@@ -141,8 +231,18 @@ export async function addItem(item) {
     fd.append("name", item.name || "file");
     fd.append("type", "file");
     fd.append("file", blob, item.name || "file");
-    const res = await fetch(API_BASE + "/api/items", { method: "POST", body: fd });
+    const token = getToken();
+    const res = await fetch(API_BASE + "/api/items", {
+      method: "POST",
+      body: fd,
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
     const data = await res.json();
+    if (res.status === 401) {
+      clearToken();
+      throw new Error("Unauthorized");
+    }
+    if (!res.ok) throw new Error(data.error || "Upload failed");
     return data.id;
   }
   const body = {
@@ -163,7 +263,7 @@ export async function updateItem(id, updates) {
 
 export async function deleteItem(id) {
   if (!USE_BACKEND) return idb.deleteItem(id);
-  await fetch(API_BASE + "/api/items/" + encodeURIComponent(id), { method: "DELETE" });
+  await fetchApi("DELETE", "/api/items/" + encodeURIComponent(id));
 }
 
 export async function getSubfolders(subject) {

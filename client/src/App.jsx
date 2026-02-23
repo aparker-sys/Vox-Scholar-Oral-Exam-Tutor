@@ -12,6 +12,10 @@ import {
   deleteItem,
   getSubfolders,
   STORAGE_KEYS,
+  login,
+  signup,
+  putOnboarding,
+  clearToken,
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
@@ -21,6 +25,12 @@ const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
 
 export default function App() {
   const [apiReady, setApiReady] = useState(false);
+  const [user, setUser] = useState(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [backendOk, setBackendOk] = useState(true);
+  const [authMode, setAuthMode] = useState("login");
+  const [authError, setAuthError] = useState("");
   const [route, setRoute] = useState("home");
   const [sessionRoute, setSessionRoute] = useState(null);
   const [thinkTime, setThinkTime] = useState(30);
@@ -58,7 +68,13 @@ export default function App() {
   const answerIntervalRef = useRef(null);
 
   useEffect(() => {
-    initBackend().then(() => setApiReady(true));
+    initBackend().then(({ user: u, needsOnboarding: ob, backendOk: ok }) => {
+      setUser(u);
+      setNeedsOnboarding(ob);
+      setBackendOk(ok ?? true);
+      setApiReady(true);
+      setAuthChecked(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -331,11 +347,55 @@ export default function App() {
 
   const currentQuestion = questions[currentIndex];
 
-  if (!apiReady) {
+  if (!authChecked || !apiReady) {
     return (
       <div className="app" style={{ justifyContent: "center", alignItems: "center" }}>
         <p>Loading…</p>
       </div>
+    );
+  }
+
+  if (!backendOk) {
+    return (
+      <div className="app screen-auth">
+        <div className="auth-card">
+          <h1 className="logo" style={{ marginBottom: "1rem" }}>Vox Scholar</h1>
+          <p className="auth-message">Server unavailable. Check your connection and try again.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        setMode={setAuthMode}
+        error={authError}
+        setError={setAuthError}
+        onSuccess={(u) => {
+          setUser(u);
+          setNeedsOnboarding(!u.onboardingComplete);
+          setAuthError("");
+        }}
+      />
+    );
+  }
+
+  if (needsOnboarding) {
+    return (
+      <OnboardingScreen
+        user={user}
+        onComplete={() => {
+          setNeedsOnboarding(false);
+          setUser((prev) => (prev ? { ...prev, onboardingComplete: true } : prev));
+        }}
+        addItem={addItem}
+        getUniqueSubjects={getUniqueSubjects}
+        loadStorage={loadStorage}
+        saveStorage={saveStorage}
+        STORAGE_KEYS={STORAGE_KEYS}
+      />
     );
   }
 
@@ -486,7 +546,7 @@ export default function App() {
                 >
                   <h2 className="tile-title">Library</h2>
                   <div className="tile-body">
-                    <p className="library-desc">Add files from Finder, create notes, and organize by folder.</p>
+                    <p className="library-desc">Add files from your computer, create notes, and organize by class.</p>
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
@@ -594,7 +654,7 @@ export default function App() {
                       Practice
                     </button>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFolder(t)}>
-                      Folder
+                      Class
                     </button>
                   </div>
                 </div>
@@ -763,6 +823,23 @@ export default function App() {
               <h3 className="settings-subtitle">Session Defaults</h3>
               <p className="settings-note">Think and answer times are configured on the Subjects screen.</p>
             </div>
+            {user && (
+              <div className="settings-section">
+                <h3 className="settings-subtitle">Account</h3>
+                <p className="settings-note">{user.email}</p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    clearToken();
+                    setUser(null);
+                    setNeedsOnboarding(false);
+                  }}
+                >
+                  Log out
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -1051,7 +1128,7 @@ function LibraryScreen({
               const files = e.target.files;
               if (!files?.length) return;
               if (librarySubjects.length === 0) {
-                window.alert("Create a folder first (use + New folder), then add files.");
+                window.alert("Create a class first (use + New class), then add files.");
                 e.target.value = "";
                 return;
               }
@@ -1066,7 +1143,7 @@ function LibraryScreen({
           className="btn btn-primary btn-sm"
           onClick={() => {
             if (librarySubjects.length === 0) {
-              window.alert("Create a folder first (use + New folder), then add notes.");
+              window.alert("Create a class first (use + New class), then add notes.");
               return;
             }
             setLibraryNewNoteModalOpen(true);
@@ -1075,12 +1152,12 @@ function LibraryScreen({
           + New note
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewFolderModalOpen(true)}>
-          + New folder
+          + New class
         </button>
       </div>
       <div className="library-list">
         {folderRows.length === 0 ? (
-          <p className="library-empty">No folders yet. Create a folder to add notes and PDFs.</p>
+          <p className="library-empty">No classes yet. Create a class to add notes and PDFs.</p>
         ) : (
           <ul className="library-folders">
             {folderRows.map((r) => (
@@ -1329,12 +1406,12 @@ function NewFolderModal({ open, onClose, newFolderName, setNewFolderName, loadSt
       <div className="modal-backdrop" onClick={onClose} />
       <div className="modal-content">
         <div className="modal-header">
-          <h3 className="modal-title">New folder</h3>
+          <h3 className="modal-title">New class</h3>
           <button type="button" className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
           <label>
-            <span>Subject / folder name</span>
+            <span>Class name</span>
             <input
               type="text"
               value={newFolderName}
@@ -1367,20 +1444,20 @@ function LibraryAddFilesModal({
       <div className="modal-backdrop" onClick={onClose} />
       <div className="modal-content">
         <div className="modal-header">
-          <h3 className="modal-title">Add files to folder</h3>
+          <h3 className="modal-title">Add files to class</h3>
           <button type="button" className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
           <p className="library-add-files-count">
-            {pendingFiles?.length ?? 0} file{(pendingFiles?.length ?? 0) !== 1 ? "s" : ""} selected. Choose a folder to add them to.
+            {pendingFiles?.length ?? 0} file{(pendingFiles?.length ?? 0) !== 1 ? "s" : ""} selected. Choose a class to add them to.
           </p>
           <label>
-            <span>Folder</span>
+            <span>Class</span>
             <select
               value={libraryAddFilesFolder}
               onChange={(e) => setLibraryAddFilesFolder(e.target.value)}
             >
-              <option value="">— Choose a folder —</option>
+              <option value="">— Choose a class —</option>
               {librarySubjects.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -1415,12 +1492,12 @@ function LibraryNewNoteModal({
         </div>
         <div className="modal-body">
           <label>
-            <span>Folder</span>
+            <span>Class</span>
             <select
               value={libraryNewNote.folder}
               onChange={(e) => setLibraryNewNote((n) => ({ ...n, folder: e.target.value }))}
             >
-              <option value="">— Choose a folder —</option>
+              <option value="">— Choose a class —</option>
               {librarySubjects.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -1448,6 +1525,265 @@ function LibraryNewNoteModal({
         <div className="modal-footer">
           <button type="button" className="btn btn-primary" onClick={onSave}>
             Save note
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthScreen({ mode, setMode, error, setError, onSuccess }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      if (mode === "login") {
+        const u = await login(email, password);
+        onSuccess(u);
+      } else {
+        const u = await signup(email, password, name);
+        onSuccess(u);
+      }
+    } catch (err) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="app screen-auth">
+      <div className="auth-card">
+        <h1 className="logo" style={{ marginBottom: "0.5rem" }}>Vox Scholar</h1>
+        <p className="tagline" style={{ marginBottom: "1.5rem" }}>Practice like the real thing</p>
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={mode === "login" ? "auth-tab active" : "auth-tab"}
+            onClick={() => (setMode("login"), setError(""))}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            className={mode === "signup" ? "auth-tab active" : "auth-tab"}
+            onClick={() => (setMode("signup"), setError(""))}
+          >
+            Sign up
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="auth-form">
+          {mode === "signup" && (
+            <label className="auth-label">
+              <span>Name</span>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+              />
+            </label>
+          )}
+          <label className="auth-label">
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoComplete="email"
+            />
+          </label>
+          <label className="auth-label">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={mode === "signup" ? "At least 6 characters" : ""}
+              required
+              minLength={mode === "signup" ? 6 : undefined}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+            />
+          </label>
+          {error && <p className="auth-error">{error}</p>}
+          <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
+            {loading ? "…" : mode === "login" ? "Log in" : "Create account"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function OnboardingScreen({ user, onComplete, addItem, getUniqueSubjects, loadStorage, saveStorage, STORAGE_KEYS }) {
+  const [name, setName] = useState(user?.name || "");
+  const [classInput, setClassInput] = useState("");
+  const [classes, setClasses] = useState([]);
+  const [importClass, setImportClass] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  const loadClasses = useCallback(() => {
+    getUniqueSubjects().then((subjects) => {
+      const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
+      setClasses([...new Set([...subjects, ...custom])].sort());
+    });
+  }, [getUniqueSubjects, loadStorage, STORAGE_KEYS.customSubjects]);
+
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
+
+  const handleCreateClass = () => {
+    const trimmed = classInput.trim();
+    if (!trimmed) return;
+    const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
+    if (!custom.includes(trimmed)) {
+      saveStorage(STORAGE_KEYS.customSubjects, [...custom, trimmed]);
+    }
+    setClassInput("");
+    loadClasses();
+    setImportClass(trimmed);
+  };
+
+  const readFileAsArrayBuffer = (file) => {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      r.readAsArrayBuffer(file);
+    });
+  };
+
+  const handleImportFiles = async () => {
+    const targetClass = importClass || classes[0];
+    if (!targetClass || !pendingFiles.length) return;
+    setSaving(true);
+    try {
+      for (const file of pendingFiles) {
+        if (file.size > 10 * 1024 * 1024) continue;
+        const content = await readFileAsArrayBuffer(file);
+        await addItem({
+          subject: targetClass,
+          name: file.name,
+          type: "file",
+          content,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+        });
+      }
+      setPendingFiles([]);
+      loadClasses();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleContinue = async () => {
+    setSaving(true);
+    try {
+      await putOnboarding({ name: name.trim() || undefined, onboardingComplete: true });
+      onComplete();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="app screen-onboarding">
+      <div className="onboarding-card">
+        <h1 className="logo" style={{ marginBottom: "0.25rem" }}>Get to know you</h1>
+        <p className="tagline" style={{ marginBottom: "1.25rem" }}>Set up your library so you can practice smarter.</p>
+
+        <section className="onboarding-section">
+          <h3 className="settings-subtitle">Your name</h3>
+          <input
+            type="text"
+            className="auth-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Alex"
+          />
+        </section>
+
+        <section className="onboarding-section">
+          <h3 className="settings-subtitle">Create a class</h3>
+          <p className="settings-note">Classes hold your notes and files in the Library.</p>
+          <div className="onboarding-row">
+            <input
+              type="text"
+              className="auth-input"
+              value={classInput}
+              onChange={(e) => setClassInput(e.target.value)}
+              placeholder="e.g. Cardiorespiratory, Pharmacology"
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateClass())}
+            />
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleCreateClass}>
+              Create class
+            </button>
+          </div>
+          {classes.length > 0 && (
+            <p className="settings-note" style={{ marginTop: "0.5rem" }}>
+              Your classes: {classes.join(", ")}
+            </p>
+          )}
+        </section>
+
+        <section className="onboarding-section">
+          <h3 className="settings-subtitle">Import files</h3>
+          <p className="settings-note">Add PDFs or other files to a class. You can add more later in the Library.</p>
+          <div className="onboarding-row">
+            <label className="btn btn-secondary btn-sm" style={{ margin: 0 }}>
+              Choose files
+              <input
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files?.length) setPendingFiles((prev) => [...prev, ...Array.from(files)]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {classes.length > 0 && (
+              <select
+                value={importClass}
+                onChange={(e) => setImportClass(e.target.value)}
+                className="auth-input"
+                style={{ width: "auto", minWidth: "140px" }}
+              >
+                <option value="">— Choose class —</option>
+                {classes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {pendingFiles.length > 0 && (
+            <p className="settings-note" style={{ marginTop: "0.5rem" }}>
+              {pendingFiles.length} file(s) selected. {classes.length > 0 ? "Choose a class above and click Add files." : "Create a class first."}
+            </p>
+          )}
+          {pendingFiles.length > 0 && classes.length > 0 && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleImportFiles} disabled={saving} style={{ marginTop: "0.5rem" }}>
+              {saving ? "Adding…" : "Add files"}
+            </button>
+          )}
+        </section>
+
+        <div className="onboarding-actions">
+          <button type="button" className="btn btn-primary" onClick={handleContinue} disabled={saving}>
+            {saving ? "…" : "Continue to Vox Scholar"}
           </button>
         </div>
       </div>
