@@ -1,6 +1,7 @@
 /**
  * Vox Scholar backend — Express + SQLite, with auth and user-scoped data.
  */
+require("dotenv").config();
 const path = require("path");
 const fs = require("fs");
 const express = require("express");
@@ -323,6 +324,47 @@ app.delete("/api/items/:id", (req, res) => {
   const r = db.prepare(`DELETE FROM items WHERE ${where}`).run(...params);
   if (r.changes === 0) return res.status(404).json({ error: "not found" });
   res.json({ ok: true });
+});
+
+// ----- TTS (Text-to-Speech) — API key on server only -----
+const TTS_API_KEY = process.env.OPENAI_API_KEY || process.env.TTS_API_KEY || "";
+const TTS_MODEL = process.env.TTS_MODEL || "tts-1";
+const TTS_VOICE = process.env.TTS_VOICE || "nova";
+
+app.post("/api/tts", async (req, res) => {
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!text) return res.status(400).json({ error: "text required" });
+  if (text.length > 4096) return res.status(400).json({ error: "text too long (max 4096)" });
+  if (!TTS_API_KEY) {
+    return res.status(503).json({ error: "TTS not configured", code: "TTS_NOT_CONFIGURED" });
+  }
+  const voice = req.body?.voice && /^[a-z]+$/.test(req.body.voice) ? req.body.voice : TTS_VOICE;
+  try {
+    const response = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TTS_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: TTS_MODEL,
+        input: text,
+        voice: voice,
+        response_format: "mp3",
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(response.status).json({ error: "TTS request failed", detail: err });
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buffer);
+  } catch (err) {
+    console.error("TTS error:", err.message);
+    return res.status(502).json({ error: "TTS service error", code: "TTS_ERROR" });
+  }
 });
 
 // ----- Static / SPA -----

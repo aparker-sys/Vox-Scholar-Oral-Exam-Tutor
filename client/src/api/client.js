@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   focusToday: "oralExam_focusToday",
   customSubjects: "oralExam_customSubjects",
   subjectRenames: "oralExam_subjectRenames",
+  charlotteVoice: "oralExam_charlotteVoice",
 };
 
 let USE_BACKEND = false;
@@ -221,6 +222,29 @@ export async function updateItem(id, updates) {
 export async function deleteItem(id) {
   if (!USE_BACKEND) return idb.deleteItem(id);
   await fetchApi("DELETE", "/api/items/" + encodeURIComponent(id));
+}
+
+/**
+ * Fetch TTS audio from backend (API key stays on server). Returns a Blob (audio/mpeg) or null if TTS not configured.
+ */
+export async function fetchTTSAudio(text, voice = null) {
+  const token = getToken();
+  const res = await fetch(API_BASE + "/api/tts", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+    },
+    body: JSON.stringify({ text: String(text).trim(), ...(voice ? { voice } : {}) }),
+  });
+  if (res.status === 503) {
+    try {
+      const data = await res.json();
+      if (data.code === "TTS_NOT_CONFIGURED") return null;
+    } catch (_) {}
+  }
+  if (!res.ok) throw new Error("TTS failed");
+  return res.blob();
 }
 
 export async function getSubfolders(subject) {

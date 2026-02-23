@@ -643,6 +643,8 @@ html, body {
 
 .settings-note { font-size: 0.875rem; color: var(--text-muted); margin: 0; }
 
+.settings-voice-try { margin-top: 0.5rem; }
+
 .weak-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 
 .weak-practice { flex-shrink: 0; }

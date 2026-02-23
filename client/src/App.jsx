@@ -15,7 +15,7 @@ import {
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
-import { VoiceTutor, useVoiceTutor } from "./components/VoiceTutor";
+import { VoiceTutor, useVoiceTutor, useVoiceOptions, previewVoice } from "./components/VoiceTutor";
 
 const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
 const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
@@ -63,6 +63,7 @@ export default function App() {
   const thinkIntervalRef = useRef(null);
   const answerIntervalRef = useRef(null);
   const { speak, isSpeaking } = useVoiceTutor();
+  const { voiceOptions } = useVoiceOptions();
 
   useEffect(() => {
     initBackend().then(({ backendOk: ok }) => {
@@ -827,6 +828,31 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+            <div className="settings-section">
+              <h3 className="settings-subtitle">Charlotte’s voice</h3>
+              <p className="settings-note">Choose a voice that matches how you’d like Charlotte to sound. Names are labeled by the voice’s sex.</p>
+              <label className="setting">
+                <span>Voice</span>
+                <select
+                  value={loadStorage(STORAGE_KEYS.charlotteVoice, "") ?? ""}
+                  onChange={(e) => saveStorage(STORAGE_KEYS.charlotteVoice, e.target.value || null)}
+                >
+                  <option value="">Default (recommended)</option>
+                  {voiceOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm settings-voice-try"
+                onClick={() => previewVoice(loadStorage(STORAGE_KEYS.charlotteVoice, "") ?? "", voiceOptions)}
+              >
+                Try this voice
+              </button>
             </div>
             <div className="settings-section">
               <h3 className="settings-subtitle">Session Defaults</h3>

@@ -25,3 +25,16 @@ To host both the frontend and backend together:
 2. **Netlify** — does not run a long-lived Node server; it’s for static sites. So for the full stack (frontend + this backend), use Railway or Render instead.
 
 The app detects the backend automatically: if it can reach `/api/health`, it uses the API; otherwise it uses localStorage and IndexedDB.
+
+## Text-to-speech (TTS)
+
+For more natural-sounding voice, the server uses **OpenAI TTS**. The API key is only on the server; the client never sees it.
+
+1. Copy `.env.example` to `.env` in the project root.
+2. In `.env`, set your key:
+   - `OPENAI_API_KEY=sk-your-key-here` (or use `TTS_API_KEY` if you prefer a separate key).
+3. Restart the server. The app loads `.env` automatically (via `dotenv`).
+
+Optional in `.env`: `TTS_MODEL=tts-1-hd`, `TTS_VOICE=alloy` (or `nova`, `shimmer`, etc.).
+
+If no key is set, the app falls back to the browser’s built-in speech. The frontend calls `POST /api/tts` and plays the returned MP3; the “speaking” state still drives the wave animation.
