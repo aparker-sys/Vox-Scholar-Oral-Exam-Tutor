@@ -16,54 +16,59 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "voxscholar.
 const JWT_SECRET = process.env.JWT_SECRET || "vox-scholar-dev-secret-change-in-production";
 const JWT_EXPIRY = process.env.JWT_EXPIRY || "30d";
 
-const dataDir = path.dirname(DB_PATH);
-fs.mkdirSync(dataDir, { recursive: true });
-
-const db = new Database(DB_PATH);
-
-// ----- Schema -----
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    passwordHash TEXT NOT NULL,
-    name TEXT DEFAULT '',
-    onboardingComplete INTEGER DEFAULT 0,
-    createdAt TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-  CREATE TABLE IF NOT EXISTS user_settings (
-    user_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT,
-    PRIMARY KEY (user_id, key),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-  CREATE TABLE IF NOT EXISTS items (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    subfolder TEXT DEFAULT '',
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    content BLOB,
-    mimeType TEXT,
-    size INTEGER,
-    createdAt TEXT,
-    updatedAt TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_items_subject ON items(subject);
-`);
-
-// Migration: add user_id to items if missing
+let db = null;
 try {
-  db.prepare("SELECT user_id FROM items LIMIT 1").get();
-} catch {
-  db.exec("ALTER TABLE items ADD COLUMN user_id TEXT");
+  const dataDir = path.dirname(DB_PATH);
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+  } catch (e) {
+    console.warn("Could not create data dir:", e.message);
+  }
+  db = new Database(DB_PATH);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      passwordHash TEXT NOT NULL,
+      name TEXT DEFAULT '',
+      onboardingComplete INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT,
+      PRIMARY KEY (user_id, key),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS items (
+      id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      subfolder TEXT DEFAULT '',
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      content BLOB,
+      mimeType TEXT,
+      size INTEGER,
+      createdAt TEXT,
+      updatedAt TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_items_subject ON items(subject);
+  `);
+  try {
+    db.prepare("SELECT user_id FROM items LIMIT 1").get();
+  } catch {
+    db.exec("ALTER TABLE items ADD COLUMN user_id TEXT");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)");
+} catch (e) {
+  console.error("Database init failed:", e.message);
+  console.error("App will start but API/storage will not work. Check DB_PATH and volume mount.");
 }
-db.exec("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)");
 
 // ----- Helpers -----
 function getSetting(userId, key) {
@@ -134,6 +139,14 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: "10mb" }));
+
+// When DB is down, still allow health (for Railway) and TTS/chat so the app can load
+app.use((req, res, next) => {
+  if (req.path === "/api/health") return next();
+  if (req.method === "POST" && (req.path === "/api/tts" || req.path === "/api/chat")) return next();
+  if (req.path.startsWith("/api/") && !db) return res.status(503).json({ error: "Database unavailable" });
+  next();
+});
 
 // ----- Public routes -----
 app.get("/api/health", (req, res) => {
