@@ -1,5 +1,61 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
+let cachedPreferredVoice = null;
+
+/** Prefer a more natural-sounding voice when available (e.g. Samantha, Google natural, premium). */
+function getPreferredVoice() {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  if (cachedPreferredVoice) return cachedPreferredVoice;
+  const lang = "en";
+  const preferred = [
+    "Samantha",           // Apple high-quality
+    "Karen",              // Apple AU
+    "Victoria",           // Apple UK
+    "Google US English",  // Chrome
+    "Microsoft Zira",     // Windows
+    "natural",
+    "premium",
+    "enhanced",
+  ];
+  const byLang = voices.filter((v) => v.lang.startsWith(lang));
+  const pool = byLang.length ? byLang : voices;
+  for (const keyword of preferred) {
+    const found = pool.find(
+      (v) =>
+        v.name.includes(keyword) ||
+        (v.voiceURI && v.voiceURI.toLowerCase().includes(keyword))
+    );
+    if (found) {
+      cachedPreferredVoice = found;
+      return found;
+    }
+  }
+  cachedPreferredVoice = pool[0] || voices[0];
+  return cachedPreferredVoice;
+}
+
+let voiceListInited = false;
+function initVoiceList() {
+  if (typeof window === "undefined" || !window.speechSynthesis || voiceListInited) return;
+  voiceListInited = true;
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => {
+    cachedPreferredVoice = null;
+    getPreferredVoice();
+  };
+}
+
+/** Apply natural-sounding settings to an utterance. */
+function applyNaturalSpeech(u) {
+  u.rate = 0.92;
+  u.pitch = 1.02;
+  u.volume = 1;
+  const voice = getPreferredVoice();
+  if (voice) u.voice = voice;
+}
+
 /**
  * Personal voice assistant: sine-wave visualization + text-to-speech.
  * No human face — just an animated wave that moves more when speaking.
@@ -23,20 +79,19 @@ export function VoiceTutor({
     isSpeakingExternal !== undefined ? isSpeakingExternal : isSpeakingInternal;
 
   useEffect(() => {
-    setSpeechSupported(
+    const ok =
       typeof window !== "undefined" &&
-        "speechSynthesis" in window &&
-        "SpeechSynthesisUtterance" in window
-    );
+      "speechSynthesis" in window &&
+      "SpeechSynthesisUtterance" in window;
+    setSpeechSupported(ok);
+    if (ok) initVoiceList();
   }, []);
 
   const speak = useCallback(
     (text) => {
       if (!speechSupported || !text?.trim()) return;
       const u = new SpeechSynthesisUtterance(text.trim());
-      u.rate = 0.95;
-      u.pitch = 1;
-      u.volume = 1;
+      applyNaturalSpeech(u);
       u.onstart = () => setIsSpeakingInternal(true);
       u.onend = () => setIsSpeakingInternal(false);
       u.onerror = () => setIsSpeakingInternal(false);
@@ -162,9 +217,7 @@ export function useVoiceTutor() {
       return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.trim());
-    u.rate = 0.95;
-    u.pitch = 1;
-    u.volume = 1;
+    applyNaturalSpeech(u);
     u.onstart = () => setIsSpeaking(true);
     u.onend = () => setIsSpeaking(false);
     u.onerror = () => setIsSpeaking(false);

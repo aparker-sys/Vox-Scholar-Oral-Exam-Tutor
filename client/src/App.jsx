@@ -393,12 +393,12 @@ export default function App() {
               </button>
             </div>
             <section className="home-tile voice-tutor-tile">
-              <h2 className="tile-title">Your voice tutor</h2>
+              <h2 className="tile-title">Charlotte — your voice tutor</h2>
               <div className="tile-body voice-tutor-tile-body">
                 <VoiceTutor
                   isSpeaking={isSpeaking}
-                  label="Voice tutor"
-                  idleMessage="Tap below to hear a welcome"
+                  label="Charlotte, voice tutor"
+                  idleMessage="Tap below to hear Charlotte say hello"
                   size="medium"
                 />
                 <div className="voice-tutor-actions">
@@ -407,12 +407,12 @@ export default function App() {
                     className="btn btn-secondary btn-sm"
                     onClick={() =>
                       speak(
-                        "Welcome to Vox Scholar. Start a mock exam when you're ready, or pick a subject to practice."
+                        "Hi, I'm Charlotte, your voice tutor. I'm so excited to help you learn and get ready for your oral exams. Whenever you're ready, start a mock exam or pick a subject to practice—I'm here to read questions and key points aloud. Let's do this!"
                       )
                     }
                     disabled={isSpeaking}
                   >
-                    {isSpeaking ? "Speaking…" : "Hear welcome"}
+                    {isSpeaking ? "Speaking…" : "Hear Charlotte’s welcome"}
                   </button>
                 </div>
               </div>
