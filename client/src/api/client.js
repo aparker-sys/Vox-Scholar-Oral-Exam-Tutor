@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   examDate: "oralExam_examDate",
   focusToday: "oralExam_focusToday",
   customSubjects: "oralExam_customSubjects",
+  subjectRenames: "oralExam_subjectRenames",
 };
 
 let USE_BACKEND = false;
@@ -53,63 +54,14 @@ export async function fetchApi(method, path, body) {
   return res.json();
 }
 
-// Auth API
-export async function login(email, password) {
-  const res = await fetch(API_BASE + "/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Login failed");
-  setToken(data.token);
-  USE_BACKEND = true;
-  return data.user;
-}
-
-export async function signup(email, password, name) {
-  const res = await fetch(API_BASE + "/api/auth/signup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: email.trim().toLowerCase(),
-      password,
-      name: (name || "").trim(),
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Signup failed");
-  setToken(data.token);
-  USE_BACKEND = true;
-  return data.user;
-}
-
-export async function getMe() {
-  const user = await fetchApi("GET", "/api/auth/me");
-  return user;
-}
-
-export async function putOnboarding(body) {
-  const user = await fetchApi("PUT", "/api/auth/onboarding", body);
-  return user;
-}
-
 export async function initBackend() {
   try {
     await fetch(API_BASE + "/api/health");
   } catch (_) {
     USE_BACKEND = false;
-    return { user: null, needsOnboarding: false, backendOk: false };
-  }
-  const token = getToken();
-  if (!token) {
-    USE_BACKEND = false;
-    return { user: null, needsOnboarding: false, backendOk: true };
+    return { backendOk: false };
   }
   try {
-    setToken(token);
-    const user = await getMe();
-    USE_BACKEND = true;
     const [lastSession, sessionHistory, weakAreas, settings] = await Promise.all([
       fetchApi("GET", "/api/last-session"),
       fetchApi("GET", "/api/session-history"),
@@ -122,10 +74,12 @@ export async function initBackend() {
     CACHE[STORAGE_KEYS.examDate] = settings?.examDate ?? null;
     CACHE[STORAGE_KEYS.focusToday] = settings?.focusToday ?? null;
     CACHE[STORAGE_KEYS.customSubjects] = settings?.customSubjects ?? [];
-    return { user, needsOnboarding: !user.onboardingComplete, backendOk: true };
+    CACHE[STORAGE_KEYS.subjectRenames] = settings?.subjectRenames ?? {};
+    USE_BACKEND = true;
+    return { backendOk: true };
   } catch (_) {
     USE_BACKEND = false;
-    return { user: null, needsOnboarding: false, backendOk: true };
+    return { backendOk: true };
   }
 }
 
@@ -166,14 +120,17 @@ export function saveStorage(key, value) {
       } else if (
         key === STORAGE_KEYS.examDate ||
         key === STORAGE_KEYS.focusToday ||
-        key === STORAGE_KEYS.customSubjects
+        key === STORAGE_KEYS.customSubjects ||
+        key === STORAGE_KEYS.subjectRenames
       ) {
         const settings = await fetchApi("GET", "/api/settings");
         if (key === STORAGE_KEYS.examDate)
           await fetchApi("PUT", "/api/settings", { ...settings, examDate: value });
         else if (key === STORAGE_KEYS.focusToday)
           await fetchApi("PUT", "/api/settings", { ...settings, focusToday: value });
-        else await fetchApi("PUT", "/api/settings", { ...settings, customSubjects: value });
+        else if (key === STORAGE_KEYS.customSubjects)
+          await fetchApi("PUT", "/api/settings", { ...settings, customSubjects: value });
+        else await fetchApi("PUT", "/api/settings", { ...settings, subjectRenames: value });
       }
     } catch (_) {}
   })();

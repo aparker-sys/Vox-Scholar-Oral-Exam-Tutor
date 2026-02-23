@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
+    "dev": "concurrently -n api,web -c blue,green \"node server.js\" \"npm run dev:client\"",
+    "dev:server": "node server.js",
     "build": "cd client && npm install --include=dev && npm run build",
     "dev:client": "cd client && npm run dev"
   },
@@ -19,5 +20,8 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

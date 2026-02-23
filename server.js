@@ -129,52 +129,8 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/auth/signup", express.json(), async (req, res) => {
-  const { email, password, name } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password required" });
-  }
-  const emailNorm = String(email).trim().toLowerCase();
-  if (!emailNorm) return res.status(400).json({ error: "Invalid email" });
-  if (String(password).length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters" });
-  }
-  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(emailNorm);
-  if (existing) return res.status(409).json({ error: "Email already registered" });
-  const id = generateId();
-  const passwordHash = await bcrypt.hash(String(password), 10);
-  db.prepare(
-    "INSERT INTO users (id, email, passwordHash, name, onboardingComplete, createdAt) VALUES (?, ?, ?, ?, 0, ?)"
-  ).run(id, emailNorm, passwordHash, String(name || "").trim(), new Date().toISOString());
-  const token = jwt.sign({ userId: id, email: emailNorm }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-  const user = db.prepare("SELECT id, email, name, onboardingComplete FROM users WHERE id = ?").get(id);
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name, onboardingComplete: !!user.onboardingComplete } });
-});
-
-app.post("/api/auth/login", express.json(), async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password required" });
-  }
-  const emailNorm = String(email).trim().toLowerCase();
-  const user = db.prepare("SELECT id, email, passwordHash, name, onboardingComplete FROM users WHERE email = ?").get(emailNorm);
-  if (!user) return res.status(401).json({ error: "Invalid email or password" });
-  const ok = await bcrypt.compare(String(password), user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "Invalid email or password" });
-  const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-  res.json({
-    token,
-    user: { id: user.id, email: user.email, name: user.name, onboardingComplete: !!user.onboardingComplete },
-  });
-});
-
-// Require auth for all API routes except health and auth signup/login
-app.use("/api", (req, res, next) => {
-  if (req.path === "/health") return next();
-  if (req.path === "/auth/signup" && req.method === "POST") return next();
-  if (req.path === "/auth/login" && req.method === "POST") return next();
-  return authRequired(req, res, next);
-});
+// No sign-up: all API routes work without a token (auth optional)
+app.use("/api", authOptional);
 
 // Last session (scoped by user)
 app.get("/api/last-session", (req, res) => {
@@ -221,6 +177,7 @@ app.get("/api/settings", (req, res) => {
     examDate: getSetting(req.userId, "examDate"),
     focusToday: getSetting(req.userId, "focusToday"),
     customSubjects: getSetting(req.userId, "customSubjects") || [],
+    subjectRenames: getSetting(req.userId, "subjectRenames") || {},
   });
 });
 app.put("/api/settings", (req, res) => {
@@ -228,33 +185,18 @@ app.put("/api/settings", (req, res) => {
     examDate: getSetting(req.userId, "examDate"),
     focusToday: getSetting(req.userId, "focusToday"),
     customSubjects: getSetting(req.userId, "customSubjects") || [],
+    subjectRenames: getSetting(req.userId, "subjectRenames") || {},
   };
-  const { examDate, focusToday, customSubjects } = req.body || {};
+  const { examDate, focusToday, customSubjects, subjectRenames } = req.body || {};
   if (examDate !== undefined) current.examDate = examDate;
   if (focusToday !== undefined) current.focusToday = focusToday;
   if (Array.isArray(customSubjects)) current.customSubjects = customSubjects;
+  if (subjectRenames !== undefined && typeof subjectRenames === "object") current.subjectRenames = subjectRenames;
   setSetting(req.userId, "examDate", current.examDate);
   setSetting(req.userId, "focusToday", current.focusToday);
   setSetting(req.userId, "customSubjects", current.customSubjects);
+  setSetting(req.userId, "subjectRenames", current.subjectRenames);
   res.json({ ok: true });
-});
-
-// Auth: me + onboarding
-app.get("/api/auth/me", authRequired, (req, res) => {
-  const user = db.prepare("SELECT id, email, name, onboardingComplete FROM users WHERE id = ?").get(req.userId);
-  if (!user) return res.status(404).json({ error: "User not found" });
-  res.json({ id: user.id, email: user.email, name: user.name, onboardingComplete: !!user.onboardingComplete });
-});
-app.put("/api/auth/onboarding", authRequired, (req, res) => {
-  const { name, onboardingComplete } = req.body || {};
-  if (name !== undefined) {
-    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(String(name).trim(), req.userId);
-  }
-  if (onboardingComplete !== undefined) {
-    db.prepare("UPDATE users SET onboardingComplete = ? WHERE id = ?").run(onboardingComplete ? 1 : 0, req.userId);
-  }
-  const user = db.prepare("SELECT id, email, name, onboardingComplete FROM users WHERE id = ?").get(req.userId);
-  res.json({ id: user.id, email: user.email, name: user.name, onboardingComplete: !!user.onboardingComplete });
 });
 
 // Library items (scoped by user_id)
@@ -350,7 +292,7 @@ app.patch("/api/items/:id", (req, res) => {
   const params = [...itemsParams(req.userId), req.params.id];
   const row = db.prepare(`SELECT * FROM items WHERE ${where}`).get(...params);
   if (!row) return res.status(404).json({ error: "not found" });
-  const { name, content, subfolder } = req.body || {};
+  const { name, content, subfolder, subject } = req.body || {};
   const updates = [];
   const values = [];
   if (name !== undefined) {
@@ -360,6 +302,10 @@ app.patch("/api/items/:id", (req, res) => {
   if (subfolder !== undefined) {
     updates.push("subfolder = ?");
     values.push(subfolder);
+  }
+  if (subject !== undefined && typeof subject === "string") {
+    updates.push("subject = ?");
+    values.push(subject);
   }
   if (content !== undefined && row.type === "note") {
     updates.push("content = ?");

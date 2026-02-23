@@ -170,6 +170,83 @@ html, body {
   line-height: 1.2;
 }
 
+/* Voice tutor — sine wave assistant */
+.voice-tutor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.voice-tutor__wave-wrap {
+  width: 100%;
+  max-width: 240px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-tutor--small .voice-tutor__wave-wrap {
+  max-width: 160px;
+  height: 48px;
+}
+
+.voice-tutor__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.voice-tutor__footer {
+  margin-top: 0.35rem;
+  text-align: center;
+}
+
+.voice-tutor__hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.voice-tutor__hint--muted {
+  font-style: italic;
+}
+
+.voice-tutor + .voice-tutor-actions,
+.voice-tutor-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.voice-tutor-tile .tile-body.voice-tutor-tile-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.session-voice-tutor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.session-voice-tutor--compact {
+  margin-bottom: 0.5rem;
+}
+
 .main {
   flex: 1;
   min-height: 0;
@@ -437,6 +514,18 @@ html, body {
   align-items: center;
   text-align: center;
 }
+.subject-card-actions .btn-rename {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+.subject-card-actions .btn-rename:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 .performance-stats { display: flex; flex-direction: column; gap: 0.5rem; }
 
@@ -588,6 +677,25 @@ html, body {
 
 .library-folder-meta { font-size: 0.75rem; color: var(--text-muted); }
 
+.library-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.library-folder-actions .btn-rename {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+.library-folder-actions .btn-rename:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .folder-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -729,6 +837,12 @@ html, body {
 }
 
 .modal-close:hover { color: var(--text); }
+
+.modal-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
 
 .modal-body {
   padding: 1rem 1.25rem;

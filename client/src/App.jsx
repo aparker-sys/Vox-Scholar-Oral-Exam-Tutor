@@ -12,25 +12,17 @@ import {
   deleteItem,
   getSubfolders,
   STORAGE_KEYS,
-  login,
-  signup,
-  putOnboarding,
-  clearToken,
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
+import { VoiceTutor, useVoiceTutor } from "./components/VoiceTutor";
 
 const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
 const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
 
 export default function App() {
   const [apiReady, setApiReady] = useState(false);
-  const [user, setUser] = useState(null);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
   const [backendOk, setBackendOk] = useState(true);
-  const [authMode, setAuthMode] = useState("login");
-  const [authError, setAuthError] = useState("");
   const [route, setRoute] = useState("home");
   const [sessionRoute, setSessionRoute] = useState(null);
   const [thinkTime, setThinkTime] = useState(30);
@@ -63,22 +55,25 @@ export default function App() {
   const [libraryNewNoteModalOpen, setLibraryNewNoteModalOpen] = useState(false);
   const [libraryNewNote, setLibraryNewNote] = useState({ folder: "", title: "", content: "" });
   const [folderRefreshKey, setFolderRefreshKey] = useState(0);
+  const [subjectRenames, setSubjectRenames] = useState({});
+  const [renameSubjectKey, setRenameSubjectKey] = useState(null);
+  const [renameSubjectInput, setRenameSubjectInput] = useState("");
+  const [renameIsBuiltIn, setRenameIsBuiltIn] = useState(true);
 
   const thinkIntervalRef = useRef(null);
   const answerIntervalRef = useRef(null);
+  const { speak, isSpeaking } = useVoiceTutor();
 
   useEffect(() => {
-    initBackend().then(({ user: u, needsOnboarding: ob, backendOk: ok }) => {
-      setUser(u);
-      setNeedsOnboarding(ob);
+    initBackend().then(({ backendOk: ok }) => {
       setBackendOk(ok ?? true);
       setApiReady(true);
-      setAuthChecked(true);
     });
   }, []);
 
   useEffect(() => {
     if (!apiReady) return;
+    setSubjectRenames(loadStorage(STORAGE_KEYS.subjectRenames, {}) || {});
     const practiceSubjects = Object.keys(QUESTIONS_BY_TOPIC || {});
     getUniqueSubjects().then((dbSubjects) => {
       const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
@@ -245,7 +240,7 @@ export default function App() {
       clearLastSessionStorage();
       addSessionToHistory(topic, true);
       setSessionSummary(
-        `You completed ${questions.length} question${questions.length === 1 ? "" : "s"} on "${topic}". Great work.`
+        `You completed ${questions.length} question${questions.length === 1 ? "" : "s"} on "${subjectRenames[topic] || topic}". Great work.`
       );
       setSessionRoute("complete");
     } else {
@@ -253,7 +248,7 @@ export default function App() {
       setSessionRoute("think");
       setThinkRemaining(Math.max(5, thinkTime));
     }
-  }, [currentIndex, questions.length, topic, thinkTime, saveLastSession, addSessionToHistory]);
+  }, [currentIndex, questions.length, topic, subjectRenames, thinkTime, saveLastSession, addSessionToHistory]);
 
   const endSession = useCallback(() => {
     if (thinkIntervalRef.current) clearInterval(thinkIntervalRef.current);
@@ -347,7 +342,7 @@ export default function App() {
 
   const currentQuestion = questions[currentIndex];
 
-  if (!authChecked || !apiReady) {
+  if (!apiReady) {
     return (
       <div className="app" style={{ justifyContent: "center", alignItems: "center" }}>
         <p>Loading…</p>
@@ -363,39 +358,6 @@ export default function App() {
           <p className="auth-message">Server unavailable. Check your connection and try again.</p>
         </div>
       </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthScreen
-        mode={authMode}
-        setMode={setAuthMode}
-        error={authError}
-        setError={setAuthError}
-        onSuccess={(u) => {
-          setUser(u);
-          setNeedsOnboarding(!u.onboardingComplete);
-          setAuthError("");
-        }}
-      />
-    );
-  }
-
-  if (needsOnboarding) {
-    return (
-      <OnboardingScreen
-        user={user}
-        onComplete={() => {
-          setNeedsOnboarding(false);
-          setUser((prev) => (prev ? { ...prev, onboardingComplete: true } : prev));
-        }}
-        addItem={addItem}
-        getUniqueSubjects={getUniqueSubjects}
-        loadStorage={loadStorage}
-        saveStorage={saveStorage}
-        STORAGE_KEYS={STORAGE_KEYS}
-      />
     );
   }
 
@@ -430,6 +392,31 @@ export default function App() {
                 <span className="cta-sublabel">15-minute timed oral simulation</span>
               </button>
             </div>
+            <section className="home-tile voice-tutor-tile">
+              <h2 className="tile-title">Your voice tutor</h2>
+              <div className="tile-body voice-tutor-tile-body">
+                <VoiceTutor
+                  isSpeaking={isSpeaking}
+                  label="Voice tutor"
+                  idleMessage="Tap below to hear a welcome"
+                  size="medium"
+                />
+                <div className="voice-tutor-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() =>
+                      speak(
+                        "Welcome to Vox Scholar. Start a mock exam when you're ready, or pick a subject to practice."
+                      )
+                    }
+                    disabled={isSpeaking}
+                  >
+                    {isSpeaking ? "Speaking…" : "Hear welcome"}
+                  </button>
+                </div>
+              </div>
+            </section>
             <div className="stats-bar">
               <div className="stat-item">
                 <span className="stat-value">{stats.sessionsCompleted}</span>
@@ -455,7 +442,7 @@ export default function App() {
                   <div className="tile-body">
                     {lastSession && QUESTIONS_BY_TOPIC[lastSession.topic] ? (
                       <div className="continue-content">
-                        <p className="continue-topic">{lastSession.topic}</p>
+                        <p className="continue-topic">{subjectRenames[lastSession.topic] || lastSession.topic}</p>
                         <p className="continue-progress">
                           Question {lastSession.currentIndex + 1} of {lastSession.questionOrder.length}
                         </p>
@@ -595,7 +582,7 @@ export default function App() {
                         <ul>
                           {weakAreas.slice(0, 3).map((w, i) => (
                             <li key={i}>
-                              {escapeHtml(w.topic)}: {escapeHtml(w.question.slice(0, 30))}
+                              {escapeHtml(subjectRenames[w.topic] || w.topic)}: {escapeHtml(w.question.slice(0, 30))}
                               {w.question.length > 30 ? "…" : ""}
                             </li>
                           ))}
@@ -648,7 +635,7 @@ export default function App() {
             <div className="subject-grid">
               {Object.keys(QUESTIONS_BY_TOPIC).map((t) => (
                 <div key={t} className="subject-card">
-                  <span className="subject-name">{escapeHtml(t)}</span>
+                  <span className="subject-name">{escapeHtml(subjectRenames[t] || t)}</span>
                   <div className="subject-card-actions">
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => selectTopic(t)}>
                       Practice
@@ -656,17 +643,31 @@ export default function App() {
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFolder(t)}>
                       Class
                     </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-rename"
+                      onClick={() => {
+                        setRenameSubjectKey(t);
+                        setRenameSubjectInput(subjectRenames[t] ?? t);
+                        setRenameIsBuiltIn(true);
+                      }}
+                      title="Rename subject"
+                    >
+                      Rename
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-          </section>
+            </section>
         )}
 
         {/* Library */}
         {route === "library" && !inSession && (
           <LibraryScreen
             librarySubjects={librarySubjects}
+            setLibrarySubjects={setLibrarySubjects}
+            subjectRenames={subjectRenames}
             openFolder={openFolder}
             setLibraryPendingFiles={setLibraryPendingFiles}
             setLibraryAddFilesModalOpen={setLibraryAddFilesModalOpen}
@@ -676,8 +677,15 @@ export default function App() {
             getUniqueSubjects={getUniqueSubjects}
             getAllBySubject={getAllBySubject}
             loadStorage={loadStorage}
+            saveStorage={saveStorage}
             STORAGE_KEYS={STORAGE_KEYS}
             escapeHtml={escapeHtml}
+            QUESTIONS_BY_TOPIC={QUESTIONS_BY_TOPIC}
+            onRenameSubject={(subject) => {
+              setRenameSubjectKey(subject);
+              setRenameSubjectInput(QUESTIONS_BY_TOPIC[subject] ? (subjectRenames[subject] ?? subject) : subject);
+              setRenameIsBuiltIn(!!QUESTIONS_BY_TOPIC[subject]);
+            }}
           />
         )}
 
@@ -686,6 +694,7 @@ export default function App() {
           <FolderScreen
             key={folderRefreshKey}
             folderSubject={folderSubject}
+            subjectRenames={subjectRenames}
             folderSubfolderFilter={folderSubfolderFilter}
             setFolderSubfolderFilter={setFolderSubfolderFilter}
             folderBackRoute={folderBackRoute}
@@ -728,7 +737,7 @@ export default function App() {
                       }, {})
                     ).map(([t, n]) => (
                       <div key={t} className="performance-row">
-                        <strong>{escapeHtml(t)}</strong>
+                        <strong>{escapeHtml(subjectRenames[t] || t)}</strong>
                         <span>{n} session{n > 1 ? "s" : ""}</span>
                       </div>
                     ))}
@@ -756,7 +765,7 @@ export default function App() {
                   {weakAreas.map((w, i) => (
                     <li key={i}>
                       <span>
-                        {escapeHtml(w.topic)}: {escapeHtml(w.question.slice(0, 50))}
+                        {escapeHtml(subjectRenames[w.topic] || w.topic)}: {escapeHtml(w.question.slice(0, 50))}
                         {w.question.length > 50 ? "…" : ""}
                       </span>
                       <span className="weak-actions">
@@ -823,23 +832,6 @@ export default function App() {
               <h3 className="settings-subtitle">Session Defaults</h3>
               <p className="settings-note">Think and answer times are configured on the Subjects screen.</p>
             </div>
-            {user && (
-              <div className="settings-section">
-                <h3 className="settings-subtitle">Account</h3>
-                <p className="settings-note">{user.email}</p>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    clearToken();
-                    setUser(null);
-                    setNeedsOnboarding(false);
-                  }}
-                >
-                  Log out
-                </button>
-              </div>
-            )}
           </section>
         )}
 
@@ -847,6 +839,22 @@ export default function App() {
         {sessionRoute === "think" && currentQuestion && (
           <section className="screen screen-think screen-session active">
             <p className="phase-label">Think</p>
+            <div className="session-voice-tutor">
+              <VoiceTutor
+                isSpeaking={isSpeaking}
+                label="Read question aloud"
+                idleMessage="Read question aloud"
+                size="small"
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => speak(currentQuestion.question)}
+                disabled={isSpeaking}
+              >
+                {isSpeaking ? "Speaking…" : "Read question aloud"}
+              </button>
+            </div>
             <p className="question-text">{currentQuestion.question}</p>
             <div className="timer think-timer">
               <span className="timer-value">{formatTime(thinkRemaining)}</span>
@@ -895,6 +903,22 @@ export default function App() {
         {sessionRoute === "feedback" && currentQuestion && (
           <section className="screen screen-feedback screen-session active">
             <p className="phase-label">Key points to include</p>
+            <div className="session-voice-tutor session-voice-tutor--compact">
+              <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear key points" />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() =>
+                  speak(
+                    "Key points to include: " +
+                      currentQuestion.keyPoints.map((p, i) => `${i + 1}. ${p}`).join(". ")
+                  )
+                }
+                disabled={isSpeaking}
+              >
+                {isSpeaking ? "Speaking…" : "Hear key points"}
+              </button>
+            </div>
             <p className="question-text">{currentQuestion.question}</p>
             <ul className="key-points">
               {currentQuestion.keyPoints.map((p, i) => (
@@ -923,6 +947,17 @@ export default function App() {
         {sessionRoute === "complete" && (
           <section className="screen screen-complete screen-session active">
             <h2>Session complete</h2>
+            <div className="session-voice-tutor session-voice-tutor--compact">
+              <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear summary" />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => speak(sessionSummary)}
+                disabled={isSpeaking}
+              >
+                {isSpeaking ? "Speaking…" : "Hear summary"}
+              </button>
+            </div>
             <p className="summary">{sessionSummary}</p>
             <div className="complete-actions">
               <button type="button" className="btn btn-primary" onClick={backToHome}>
@@ -1065,6 +1100,48 @@ export default function App() {
           setRoute((r) => r);
         }}
       />
+
+      {/* Rename subject/class modal (built-in = display name, custom = real rename) */}
+      <RenameSubjectModal
+        open={renameSubjectKey != null}
+        topicKey={renameSubjectKey}
+        displayName={renameSubjectInput}
+        setDisplayName={setRenameSubjectInput}
+        isBuiltIn={renameIsBuiltIn}
+        onSave={async () => {
+          const key = renameSubjectKey;
+          const trimmed = (renameSubjectInput || "").trim();
+          if (renameIsBuiltIn) {
+            const next = { ...subjectRenames };
+            if (trimmed && trimmed !== key) next[key] = trimmed;
+            else delete next[key];
+            setSubjectRenames(next);
+            saveStorage(STORAGE_KEYS.subjectRenames, next);
+            setRenameSubjectKey(null);
+            return;
+          }
+          if (!trimmed) {
+            window.alert("Please enter a name.");
+            return;
+          }
+          if (trimmed === key) {
+            setRenameSubjectKey(null);
+            return;
+          }
+          const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
+          if (!custom.includes(key)) {
+            setRenameSubjectKey(null);
+            return;
+          }
+          saveStorage(STORAGE_KEYS.customSubjects, custom.map((s) => (s === key ? trimmed : s)));
+          const items = await getAllBySubject(key);
+          for (const item of items) await updateItem(item.id, { subject: trimmed });
+          setLibrarySubjects((prev) => prev.map((s) => (s === key ? trimmed : s)));
+          setRenameSubjectKey(null);
+        }}
+        onClose={() => setRenameSubjectKey(null)}
+        escapeHtml={escapeHtml}
+      />
     </div>
   );
 }
@@ -1080,6 +1157,8 @@ function readFileAsArrayBuffer(file) {
 
 function LibraryScreen({
   librarySubjects,
+  setLibrarySubjects,
+  subjectRenames,
   openFolder,
   setLibraryPendingFiles,
   setLibraryAddFilesModalOpen,
@@ -1089,8 +1168,11 @@ function LibraryScreen({
   getUniqueSubjects,
   getAllBySubject,
   loadStorage,
+  saveStorage,
   STORAGE_KEYS,
   escapeHtml,
+  QUESTIONS_BY_TOPIC,
+  onRenameSubject,
 }) {
   const [folderRows, setFolderRows] = useState([]);
 
@@ -1163,18 +1245,28 @@ function LibraryScreen({
             {folderRows.map((r) => (
               <li key={r.subject} className="library-folder-item">
                 <div className="library-folder-info">
-                  <span className="library-folder-name">{escapeHtml(r.subject)}</span>
+                  <span className="library-folder-name">{escapeHtml(subjectRenames[r.subject] || r.subject)}</span>
                   <span className="library-folder-meta">
                     {r.notes} note{r.notes !== 1 ? "s" : ""}, {r.files} file{r.files !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => openFolder(r.subject, "library")}
-                >
-                  Open
-                </button>
+                <div className="library-folder-actions">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-rename"
+                    onClick={() => onRenameSubject(r.subject)}
+                    title={QUESTIONS_BY_TOPIC[r.subject] ? "Rename display name" : "Rename class"}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => openFolder(r.subject, "library")}
+                  >
+                    Open
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -1186,6 +1278,7 @@ function LibraryScreen({
 
 function FolderScreen({
   folderSubject,
+  subjectRenames,
   folderSubfolderFilter,
   setFolderSubfolderFilter,
   folderBackRoute,
@@ -1262,7 +1355,7 @@ function FolderScreen({
         <button type="button" className="btn-back" onClick={() => navigate(folderBackRoute)}>
           ← Back
         </button>
-        <h2 className="screen-title">{folderSubject} — Notes &amp; files</h2>
+        <h2 className="screen-title">{subjectRenames[folderSubject] || folderSubject} — Notes &amp; files</h2>
       </div>
       <div className="folder-toolbar">
         <div className="folder-filter">
@@ -1430,6 +1523,45 @@ function NewFolderModal({ open, onClose, newFolderName, setNewFolderName, loadSt
   );
 }
 
+function RenameSubjectModal({ open, topicKey, displayName, setDisplayName, isBuiltIn, onSave, onClose, escapeHtml }) {
+  if (!open || !topicKey) return null;
+  return (
+    <div className="modal modal-sm" hidden={!open}>
+      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal-content">
+        <div className="modal-header">
+          <h3 className="modal-title">{isBuiltIn ? "Rename subject" : "Rename class"}</h3>
+          <button type="button" className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          <p className="modal-hint">
+            {isBuiltIn
+              ? `Display name for "${escapeHtml(topicKey)}"`
+              : `New name for "${escapeHtml(topicKey)}" (notes and files will move to the new name)`}
+          </p>
+          <label>
+            <span>Name</span>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={topicKey}
+            />
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onSave}>
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LibraryAddFilesModal({
   open,
   onClose,
@@ -1525,265 +1657,6 @@ function LibraryNewNoteModal({
         <div className="modal-footer">
           <button type="button" className="btn btn-primary" onClick={onSave}>
             Save note
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AuthScreen({ mode, setMode, error, setError, onSuccess }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      if (mode === "login") {
-        const u = await login(email, password);
-        onSuccess(u);
-      } else {
-        const u = await signup(email, password, name);
-        onSuccess(u);
-      }
-    } catch (err) {
-      setError(err.message || "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="app screen-auth">
-      <div className="auth-card">
-        <h1 className="logo" style={{ marginBottom: "0.5rem" }}>Vox Scholar</h1>
-        <p className="tagline" style={{ marginBottom: "1.5rem" }}>Practice like the real thing</p>
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={mode === "login" ? "auth-tab active" : "auth-tab"}
-            onClick={() => (setMode("login"), setError(""))}
-          >
-            Log in
-          </button>
-          <button
-            type="button"
-            className={mode === "signup" ? "auth-tab active" : "auth-tab"}
-            onClick={() => (setMode("signup"), setError(""))}
-          >
-            Sign up
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="auth-form">
-          {mode === "signup" && (
-            <label className="auth-label">
-              <span>Name</span>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-              />
-            </label>
-          )}
-          <label className="auth-label">
-            <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-          </label>
-          <label className="auth-label">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === "signup" ? "At least 6 characters" : ""}
-              required
-              minLength={mode === "signup" ? 6 : undefined}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-            />
-          </label>
-          {error && <p className="auth-error">{error}</p>}
-          <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
-            {loading ? "…" : mode === "login" ? "Log in" : "Create account"}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function OnboardingScreen({ user, onComplete, addItem, getUniqueSubjects, loadStorage, saveStorage, STORAGE_KEYS }) {
-  const [name, setName] = useState(user?.name || "");
-  const [classInput, setClassInput] = useState("");
-  const [classes, setClasses] = useState([]);
-  const [importClass, setImportClass] = useState("");
-  const [pendingFiles, setPendingFiles] = useState([]);
-  const [saving, setSaving] = useState(false);
-
-  const loadClasses = useCallback(() => {
-    getUniqueSubjects().then((subjects) => {
-      const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
-      setClasses([...new Set([...subjects, ...custom])].sort());
-    });
-  }, [getUniqueSubjects, loadStorage, STORAGE_KEYS.customSubjects]);
-
-  useEffect(() => {
-    loadClasses();
-  }, [loadClasses]);
-
-  const handleCreateClass = () => {
-    const trimmed = classInput.trim();
-    if (!trimmed) return;
-    const custom = loadStorage(STORAGE_KEYS.customSubjects, []) || [];
-    if (!custom.includes(trimmed)) {
-      saveStorage(STORAGE_KEYS.customSubjects, [...custom, trimmed]);
-    }
-    setClassInput("");
-    loadClasses();
-    setImportClass(trimmed);
-  };
-
-  const readFileAsArrayBuffer = (file) => {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
-      r.readAsArrayBuffer(file);
-    });
-  };
-
-  const handleImportFiles = async () => {
-    const targetClass = importClass || classes[0];
-    if (!targetClass || !pendingFiles.length) return;
-    setSaving(true);
-    try {
-      for (const file of pendingFiles) {
-        if (file.size > 10 * 1024 * 1024) continue;
-        const content = await readFileAsArrayBuffer(file);
-        await addItem({
-          subject: targetClass,
-          name: file.name,
-          type: "file",
-          content,
-          mimeType: file.type || "application/octet-stream",
-          size: file.size,
-        });
-      }
-      setPendingFiles([]);
-      loadClasses();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleContinue = async () => {
-    setSaving(true);
-    try {
-      await putOnboarding({ name: name.trim() || undefined, onboardingComplete: true });
-      onComplete();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="app screen-onboarding">
-      <div className="onboarding-card">
-        <h1 className="logo" style={{ marginBottom: "0.25rem" }}>Get to know you</h1>
-        <p className="tagline" style={{ marginBottom: "1.25rem" }}>Set up your library so you can practice smarter.</p>
-
-        <section className="onboarding-section">
-          <h3 className="settings-subtitle">Your name</h3>
-          <input
-            type="text"
-            className="auth-input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Alex"
-          />
-        </section>
-
-        <section className="onboarding-section">
-          <h3 className="settings-subtitle">Create a class</h3>
-          <p className="settings-note">Classes hold your notes and files in the Library.</p>
-          <div className="onboarding-row">
-            <input
-              type="text"
-              className="auth-input"
-              value={classInput}
-              onChange={(e) => setClassInput(e.target.value)}
-              placeholder="e.g. Cardiorespiratory, Pharmacology"
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateClass())}
-            />
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleCreateClass}>
-              Create class
-            </button>
-          </div>
-          {classes.length > 0 && (
-            <p className="settings-note" style={{ marginTop: "0.5rem" }}>
-              Your classes: {classes.join(", ")}
-            </p>
-          )}
-        </section>
-
-        <section className="onboarding-section">
-          <h3 className="settings-subtitle">Import files</h3>
-          <p className="settings-note">Add PDFs or other files to a class. You can add more later in the Library.</p>
-          <div className="onboarding-row">
-            <label className="btn btn-secondary btn-sm" style={{ margin: 0 }}>
-              Choose files
-              <input
-                type="file"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files?.length) setPendingFiles((prev) => [...prev, ...Array.from(files)]);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {classes.length > 0 && (
-              <select
-                value={importClass}
-                onChange={(e) => setImportClass(e.target.value)}
-                className="auth-input"
-                style={{ width: "auto", minWidth: "140px" }}
-              >
-                <option value="">— Choose class —</option>
-                {classes.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            )}
-          </div>
-          {pendingFiles.length > 0 && (
-            <p className="settings-note" style={{ marginTop: "0.5rem" }}>
-              {pendingFiles.length} file(s) selected. {classes.length > 0 ? "Choose a class above and click Add files." : "Create a class first."}
-            </p>
-          )}
-          {pendingFiles.length > 0 && classes.length > 0 && (
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleImportFiles} disabled={saving} style={{ marginTop: "0.5rem" }}>
-              {saving ? "Adding…" : "Add files"}
-            </button>
-          )}
-        </section>
-
-        <div className="onboarding-actions">
-          <button type="button" className="btn btn-primary" onClick={handleContinue} disabled={saving}>
-            {saving ? "…" : "Continue to Vox Scholar"}
           </button>
         </div>
       </div>
