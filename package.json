@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "concurrently -n api,web -c blue,green \"node server.js\" \"npm run dev:client\"",
+    "dev": "concurrently -n api,web -c blue,green \"PORT=3001 node server.js\" \"npm run dev:client\"",
     "dev:server": "node server.js",
     "build": "cd client && npm install --include=dev && npm run build",
     "dev:client": "cd client && npm run dev"

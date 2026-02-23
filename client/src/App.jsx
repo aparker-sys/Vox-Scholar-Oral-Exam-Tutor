@@ -11,6 +11,7 @@ import {
   updateItem,
   deleteItem,
   getSubfolders,
+  fetchChat,
   STORAGE_KEYS,
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
@@ -59,6 +60,10 @@ export default function App() {
   const [renameSubjectKey, setRenameSubjectKey] = useState(null);
   const [renameSubjectInput, setRenameSubjectInput] = useState("");
   const [renameIsBuiltIn, setRenameIsBuiltIn] = useState(true);
+  const [charlotteInput, setCharlotteInput] = useState("");
+  const [charlotteHistory, setCharlotteHistory] = useState([]);
+  const [charlotteLoading, setCharlotteLoading] = useState(false);
+  const [charlotteError, setCharlotteError] = useState("");
 
   const thinkIntervalRef = useRef(null);
   const answerIntervalRef = useRef(null);
@@ -415,6 +420,46 @@ export default function App() {
                   >
                     {isSpeaking ? "Speaking…" : "Hear Charlotte’s welcome"}
                   </button>
+                </div>
+                <div className="charlotte-chat">
+                  <p className="charlotte-chat-hint">Ask Charlotte anything—she’ll reply and can read it aloud.</p>
+                  <form
+                    className="charlotte-chat-form"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const msg = charlotteInput.trim();
+                      if (!msg || charlotteLoading) return;
+                      setCharlotteLoading(true);
+                      setCharlotteError("");
+                      try {
+                        const reply = await fetchChat(msg, charlotteHistory);
+                        if (reply) {
+                          setCharlotteHistory((h) => [...h, { role: "user", content: msg }, { role: "assistant", content: reply }].slice(-20));
+                          setCharlotteInput("");
+                          speak(reply);
+                        } else {
+                          setCharlotteError("Chat isn’t configured. Add OPENAI_API_KEY on the server.");
+                        }
+                      } catch (err) {
+                        setCharlotteError(err.message || "Something went wrong.");
+                      } finally {
+                        setCharlotteLoading(false);
+                      }
+                    }}
+                  >
+                    <input
+                      type="text"
+                      className="charlotte-chat-input"
+                      placeholder="e.g. How do I stay calm in the exam?"
+                      value={charlotteInput}
+                      onChange={(e) => setCharlotteInput(e.target.value)}
+                      disabled={charlotteLoading}
+                    />
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={charlotteLoading || !charlotteInput.trim()}>
+                      {charlotteLoading ? "…" : "Ask Charlotte"}
+                    </button>
+                  </form>
+                  {charlotteError && <p className="charlotte-chat-error">{charlotteError}</p>}
                 </div>
               </div>
             </section>

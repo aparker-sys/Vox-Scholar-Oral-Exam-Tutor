@@ -328,8 +328,18 @@ app.delete("/api/items/:id", (req, res) => {
 
 // ----- TTS (Text-to-Speech) — API key on server only -----
 const TTS_API_KEY = process.env.OPENAI_API_KEY || process.env.TTS_API_KEY || "";
-const TTS_MODEL = process.env.TTS_MODEL || "tts-1";
-const TTS_VOICE = process.env.TTS_VOICE || "nova";
+const TTS_MODEL = process.env.TTS_MODEL || "gpt-4o-mini-tts";
+const TTS_VOICE = process.env.TTS_VOICE || "shimmer";
+const TTS_SUPPORTS_INSTRUCTIONS = /gpt-4o-mini-tts|gpt-4o-tts/i.test(TTS_MODEL);
+const TTS_INSTRUCTIONS =
+  process.env.TTS_INSTRUCTIONS ||
+  "Speak with natural variation in tone and pace. Sound warm, personable, and engaging—vary your intonation so it feels conversational, not flat or monotone.";
+
+if (TTS_API_KEY) {
+  console.log(
+    `[TTS] model=${TTS_MODEL} voice=${TTS_VOICE} instructions=${TTS_SUPPORTS_INSTRUCTIONS && TTS_INSTRUCTIONS ? "on" : "off"}`
+  );
+}
 
 app.post("/api/tts", async (req, res) => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
@@ -339,6 +349,13 @@ app.post("/api/tts", async (req, res) => {
     return res.status(503).json({ error: "TTS not configured", code: "TTS_NOT_CONFIGURED" });
   }
   const voice = req.body?.voice && /^[a-z]+$/.test(req.body.voice) ? req.body.voice : TTS_VOICE;
+  const body = {
+    model: TTS_MODEL,
+    input: text,
+    voice: voice,
+    response_format: "mp3",
+  };
+  if (TTS_SUPPORTS_INSTRUCTIONS && TTS_INSTRUCTIONS) body.instructions = TTS_INSTRUCTIONS;
   try {
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
@@ -346,15 +363,11 @@ app.post("/api/tts", async (req, res) => {
         Authorization: `Bearer ${TTS_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: TTS_MODEL,
-        input: text,
-        voice: voice,
-        response_format: "mp3",
-      }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const err = await response.text();
+      console.error("[TTS] OpenAI error:", response.status, err);
       return res.status(response.status).json({ error: "TTS request failed", detail: err });
     }
     const buffer = Buffer.from(await response.arrayBuffer());
@@ -364,6 +377,48 @@ app.post("/api/tts", async (req, res) => {
   } catch (err) {
     console.error("TTS error:", err.message);
     return res.status(502).json({ error: "TTS service error", code: "TTS_ERROR" });
+  }
+});
+
+// ----- Charlotte LLM chat (same API key) -----
+const CHAT_MODEL = process.env.CHAT_MODEL || "gpt-4o-mini";
+
+const CHARLOTTE_SYSTEM = `You are Charlotte, a warm and encouraging voice tutor for students preparing for oral exams. You help them practice, stay calm, and improve. Keep replies concise (one to three short sentences) so they work well when read aloud. Be supportive and a little upbeat.`;
+
+app.post("/api/chat", async (req, res) => {
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  if (!message) return res.status(400).json({ error: "message required" });
+  const history = Array.isArray(req.body?.history) ? req.body.history : [];
+  const key = process.env.OPENAI_API_KEY || process.env.TTS_API_KEY || "";
+  if (!key) return res.status(503).json({ error: "Chat not configured", code: "CHAT_NOT_CONFIGURED" });
+  const messages = [
+    { role: "system", content: CHARLOTTE_SYSTEM },
+    ...history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: message },
+  ];
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        messages,
+        max_tokens: 150,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(response.status).json({ error: "Chat request failed", detail: err });
+    }
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content?.trim() || "";
+    res.json({ reply });
+  } catch (err) {
+    console.error("Chat error:", err.message);
+    return res.status(502).json({ error: "Chat service error", code: "CHAT_ERROR" });
   }
 });
 

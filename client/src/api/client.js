@@ -243,8 +243,38 @@ export async function fetchTTSAudio(text, voice = null) {
       if (data.code === "TTS_NOT_CONFIGURED") return null;
     } catch (_) {}
   }
-  if (!res.ok) throw new Error("TTS failed");
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      if (data.detail) detail = data.detail;
+      else if (data.error) detail = data.error;
+    } catch (_) {}
+    throw new Error(`TTS ${res.status}: ${detail}`);
+  }
   return res.blob();
+}
+
+/**
+ * Send a message to Charlotte (LLM) and get a reply. history: [{ role, content }].
+ */
+export async function fetchChat(message, history = []) {
+  const token = getToken();
+  const res = await fetch(API_BASE + "/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+    },
+    body: JSON.stringify({ message: String(message).trim(), history }),
+  });
+  if (res.status === 503) {
+    const data = await res.json().catch(() => ({}));
+    if (data.code === "CHAT_NOT_CONFIGURED") return null;
+  }
+  if (!res.ok) throw new Error("Chat failed");
+  const data = await res.json();
+  return data.reply ?? "";
 }
 
 export async function getSubfolders(subject) {

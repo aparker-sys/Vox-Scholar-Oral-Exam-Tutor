@@ -117,6 +117,7 @@ export function VoiceTutor({
   const ttsUrlRef = useRef(null);
   const [isSpeakingInternal, setIsSpeakingInternal] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [ttsFallbackReason, setTtsFallbackReason] = useState("");
   const rafRef = useRef(null);
   const phaseRef = useRef(0);
 
@@ -154,6 +155,7 @@ export function VoiceTutor({
         }
       };
 
+      setTtsFallbackReason("");
       try {
         const blob = await fetchTTSAudio(trimmed);
         if (blob) {
@@ -172,11 +174,18 @@ export function VoiceTutor({
             stopTTSPlayback();
           };
           await audio.play();
+          console.info("[Charlotte TTS] Using backend (natural voice)");
           onSpeak?.(text);
           return;
         }
-      } catch (_) {
-        /* fall back to speechSynthesis */
+        setTtsFallbackReason("TTS not configured on server");
+        console.warn("[Charlotte TTS] Backend returned no audio (503). Using browser voice.");
+      } catch (err) {
+        const msg = err?.message || "Request failed";
+        setTtsFallbackReason(
+          msg.includes("429") ? "Too many requests—wait a minute and try again." : msg
+        );
+        console.warn("[Charlotte TTS] Backend failed:", msg, "— using browser voice.");
       }
 
       if (!hasFallback) return;
@@ -293,6 +302,11 @@ export function VoiceTutor({
         {speechSupported && (
           <p className="voice-tutor__hint">
             {isSpeaking ? "Speaking…" : idleMessage}
+          </p>
+        )}
+        {ttsFallbackReason && (
+          <p className="voice-tutor__hint voice-tutor__hint--fallback" role="status">
+            Using browser voice — {ttsFallbackReason}
           </p>
         )}
         {!speechSupported && (

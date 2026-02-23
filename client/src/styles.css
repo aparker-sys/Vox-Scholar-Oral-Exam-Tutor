@@ -218,6 +218,12 @@ html, body {
   font-style: italic;
 }
 
+.voice-tutor__hint--fallback {
+  color: var(--warning, #b8860b);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
 .voice-tutor + .voice-tutor-actions,
 .voice-tutor-actions {
   margin-top: 0.5rem;
@@ -231,6 +237,34 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.charlotte-chat {
+  margin-top: 1rem;
+  width: 100%;
+  max-width: 28rem;
+}
+.charlotte-chat-hint {
+  font-size: 0.85rem;
+  color: var(--muted, #666);
+  margin-bottom: 0.5rem;
+}
+.charlotte-chat-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.charlotte-chat-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+.charlotte-chat-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--danger, #c00);
 }
 
 .session-voice-tutor {

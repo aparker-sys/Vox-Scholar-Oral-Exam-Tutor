@@ -38,3 +38,7 @@ For more natural-sounding voice, the server uses **OpenAI TTS**. The API key is 
 Optional in `.env`: `TTS_MODEL=tts-1-hd`, `TTS_VOICE=alloy` (or `nova`, `shimmer`, etc.).
 
 If no key is set, the app falls back to the browser’s built-in speech. The frontend calls `POST /api/tts` and plays the returned MP3; the “speaking” state still drives the wave animation.
+
+## Charlotte chat (LLM)
+
+The same `OPENAI_API_KEY` is used for **Charlotte’s conversational replies**. `POST /api/chat` accepts `{ "message": "user text", "history": [] }` and returns `{ "reply": "..." }` using OpenAI chat (default model: `gpt-4o-mini`). Optional in `.env`: `CHAT_MODEL=gpt-4o` for a stronger model.
