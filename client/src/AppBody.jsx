@@ -12,10 +12,12 @@ import {
   deleteItem,
   getSubfolders,
   fetchChat,
+  fetchGenerateQuestions,
   STORAGE_KEYS,
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
+import { extractTextFromPdf, isPdfFile } from "./utils/pdfText.js";
 import {
   useVoiceTutor,
   useVoiceOptions,
@@ -74,6 +76,8 @@ export default function AppBody() {
   const [charlotteHistory, setCharlotteHistory] = useState([]);
   const [charlotteLoading, setCharlotteLoading] = useState(false);
   const [charlotteError, setCharlotteError] = useState("");
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsError, setQuestionsError] = useState("");
 
   const thinkIntervalRef = useRef(null);
   const answerIntervalRef = useRef(null);
@@ -237,22 +241,56 @@ export default function AppBody() {
   const lastSpokenQuestionRef = useRef(null);
 
   const selectTopic = useCallback(
-    (t) => {
-      if (!QUESTIONS_BY_TOPIC[t]) return;
-      const raw = [...QUESTIONS_BY_TOPIC[t]];
-      const shuffled = shuffleArray(raw.map((q, i) => ({ ...q, _idx: i })));
+    async (t) => {
+      // Always use only the user's material — no built-in question sets.
+      // Check for notes/PDFs in this subject; generate questions from that content only.
       setTopic(t);
-      setQuestions(shuffled);
-      setQuestionOrder(shuffled.map((q) => q._idx));
-      setCurrentIndex(0);
-      setAnswerNotes("");
-      setAnswerTranscripts([]);
-      setCurrentAnswerTranscript("");
-      saveLastSession();
-      setSessionRoute("think");
-      lastSpokenQuestionRef.current = null;
+      setQuestionsLoading(true);
+      setQuestionsError("");
+      try {
+        const items = await getAllBySubject(t);
+        let material = "";
+        for (const item of items) {
+          if (item.type === "note") {
+            const full = await getItem(item.id);
+            if (full && full.content) material += (material ? "\n\n" : "") + String(full.content).trim();
+          } else if (item.type === "file" && isPdfFile(item.name, item.mimeType)) {
+            const full = await getItem(item.id);
+            if (full && full.content instanceof ArrayBuffer) {
+              try {
+                const text = await extractTextFromPdf(full.content);
+                if (text.trim()) material += (material ? "\n\n" : "") + text.trim();
+              } catch (e) {
+                console.warn("PDF text extraction failed for", item.name, e);
+              }
+            }
+          }
+        }
+        if (!material || material.length < 100) {
+          setQuestionsError("Add notes or upload PDF readings to this class so we can generate questions from your material. (Only text-based PDFs are read; scanned images are not supported.)");
+          setQuestionsLoading(false);
+          setTopic(null);
+          return;
+        }
+        const { questions: generated } = await fetchGenerateQuestions(material);
+        const raw = (generated || []).map((q, i) => ({ ...q, _idx: i }));
+        const shuffled = shuffleArray(raw);
+        setQuestions(shuffled);
+        setQuestionOrder(shuffled.map((q) => q._idx));
+        setCurrentIndex(0);
+        setAnswerNotes("");
+        setAnswerTranscripts([]);
+        setCurrentAnswerTranscript("");
+        saveLastSession();
+        setSessionRoute("think");
+        lastSpokenQuestionRef.current = null;
+      } catch (err) {
+        setQuestionsError(err.message || "Could not generate questions. Check that the server has OPENAI_API_KEY set.");
+      } finally {
+        setQuestionsLoading(false);
+      }
     },
-    [saveLastSession]
+    [saveLastSession, getAllBySubject, getItem, fetchGenerateQuestions]
   );
 
   const currentQuestion = questions[currentIndex];
@@ -283,6 +321,12 @@ export default function AppBody() {
     setCurrentAnswerTranscript("");
     currentAnswerTranscriptRef.current = "";
   }, [currentIndex, stopSessionAnswerListening]);
+
+  // Auto-start listening when entering Answer screen so the mic is always on when user lands here
+  useEffect(() => {
+    if (sessionRoute !== "answer" || !sessionAnswerRecognitionSupported || isSessionAnswerListening) return;
+    startSessionAnswerListening();
+  }, [sessionRoute, sessionAnswerRecognitionSupported, isSessionAnswerListening, startSessionAnswerListening]);
 
   useEffect(() => {
     if (sessionRoute !== "answer") return;
@@ -462,6 +506,23 @@ export default function AppBody() {
       </header>
 
       <main className="main">
+        {/* Preparing questions from uploaded material */}
+        {questionsLoading && topic && !sessionRoute && (
+          <section className="screen screen-preparing active">
+            <div className="preparing-content">
+              <p className="preparing-text">Reading your material and generating questions…</p>
+              <div className="preparing-spinner" aria-hidden="true" />
+            </div>
+          </section>
+        )}
+        {questionsError && !sessionRoute && (
+          <div className="questions-error-banner" role="alert">
+            <p>{questionsError}</p>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setQuestionsError("")}>
+              Dismiss
+            </button>
+          </div>
+        )}
         {/* Home */}
         {route === "home" && !inSession && (
           <section className="screen screen-home active">
@@ -562,7 +623,7 @@ export default function AppBody() {
                 <section className="home-tile home-continue">
                   <h2 className="tile-title">Continue Last Session</h2>
                   <div className="tile-body">
-                    {lastSession && QUESTIONS_BY_TOPIC[lastSession.topic] ? (
+                    {lastSession ? (
                       <div className="continue-content">
                         <p className="continue-topic">{subjectRenames[lastSession.topic] || lastSession.topic}</p>
                         <p className="continue-progress">
@@ -571,18 +632,7 @@ export default function AppBody() {
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          onClick={() => {
-                            const last = lastSession;
-                            const raw = QUESTIONS_BY_TOPIC[last.topic];
-                            setTopic(last.topic);
-                            setQuestions(
-                              last.questionOrder.map((i) => ({ ...raw[i], _idx: i }))
-                            );
-                            setQuestionOrder(last.questionOrder);
-                            setCurrentIndex(last.currentIndex);
-                            setSessionRoute("think");
-                            lastSpokenQuestionRef.current = null;
-                          }}
+                          onClick={() => selectTopic(lastSession.topic)}
                         >
                           Continue
                         </button>
@@ -755,12 +805,17 @@ export default function AppBody() {
               </label>
             </div>
             <div className="subject-grid">
-              {Object.keys(QUESTIONS_BY_TOPIC).map((t) => (
+              {librarySubjects.map((t) => (
                 <div key={t} className="subject-card">
                   <span className="subject-name">{escapeHtml(subjectRenames[t] || t)}</span>
                   <div className="subject-card-actions">
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => selectTopic(t)}>
-                      Practice
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => selectTopic(t)}
+                      disabled={questionsLoading}
+                    >
+                      {questionsLoading ? "Preparing…" : "Practice"}
                     </button>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => openFolder(t)}>
                       Class
@@ -771,9 +826,9 @@ export default function AppBody() {
                       onClick={() => {
                         setRenameSubjectKey(t);
                         setRenameSubjectInput(subjectRenames[t] ?? t);
-                        setRenameIsBuiltIn(true);
+                        setRenameIsBuiltIn(!!QUESTIONS_BY_TOPIC[t]);
                       }}
-                      title="Rename subject"
+                      title={QUESTIONS_BY_TOPIC[t] ? "Rename display name" : "Rename class"}
                     >
                       Rename
                     </button>
@@ -824,6 +879,7 @@ export default function AppBody() {
             openNoteEditor={openNoteEditor}
             openFolder={openFolder}
             selectTopic={selectTopic}
+            questionsLoading={questionsLoading}
             getAllBySubject={getAllBySubject}
             getSubfolders={getSubfolders}
             getItem={getItem}
@@ -1026,14 +1082,21 @@ export default function AppBody() {
             </div>
             <div className="answer-listening-area">
               {sessionAnswerRecognitionSupported ? (
-                <div className={`answer-listening-indicator ${isSessionAnswerListening ? "active" : ""}`}>
-                  <span className="answer-listening-icon" aria-hidden>🎤</span>
-                  <p className="answer-listening-text">
-                    {isSessionAnswerListening
-                      ? "Charlotte is listening… Your response will be shown after the session."
-                      : "Listening will start when you press Start answering."}
-                  </p>
-                </div>
+                <>
+                  <div className={`answer-listening-indicator ${isSessionAnswerListening ? "active" : ""}`}>
+                    <span className="answer-listening-icon" aria-hidden>🎤</span>
+                    <p className="answer-listening-text">
+                      {isSessionAnswerListening
+                        ? "Charlotte is listening… Your response will be shown after the session."
+                        : "Tap Start answering below to turn on the microphone."}
+                    </p>
+                  </div>
+                  {!isSessionAnswerListening && (
+                    <button type="button" className="btn btn-primary answer-start-btn" onClick={startSessionAnswerListening}>
+                      Start answering
+                    </button>
+                  )}
+                </>
               ) : (
                 <p className="answer-listening-fallback">Voice capture is not supported in this browser. Use a supported browser to have your answer recorded.</p>
               )}
@@ -1451,6 +1514,7 @@ function FolderScreen({
   openNoteEditor,
   openFolder,
   selectTopic,
+  questionsLoading,
   getAllBySubject,
   getSubfolders,
   getItem,
@@ -1595,8 +1659,13 @@ function FolderScreen({
         )}
       </div>
       <div className="folder-practice">
-        <button type="button" className="btn btn-primary" onClick={() => selectTopic(folderSubject)}>
-          Practice this subject
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => selectTopic(folderSubject)}
+          disabled={questionsLoading}
+        >
+          {questionsLoading ? "Generating questions…" : "Practice this subject"}
         </button>
       </div>
     </section>

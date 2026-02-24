@@ -445,6 +445,87 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// ----- Generate practice questions from uploaded material (same API key) -----
+const GENERATE_QUESTIONS_SYSTEM = `You are helping a student prepare for oral exams based on SPECIFIC reading material they uploaded.
+
+RULES:
+- Use ONLY the text provided below. Do not introduce topics, examples, or questions from outside the material.
+- First identify the main points, arguments, and key concepts in the reading.
+- Generate 3 to 5 practice questions that an examiner would ask specifically about THIS material. Questions must be answerable using only the uploaded reading.
+- Do not ask generic or unrelated questions (e.g. no medical cases, no other subjects). Every question must clearly relate to the content provided.
+- For each question, list 2 to 4 short key points the student should include, drawn from the material.
+
+Return only valid JSON in this exact shape, no other text:
+{"questions":[{"question":"...","keyPoints":["...","..."]},{"question":"...","keyPoints":["..."]}]}`;
+
+app.post("/api/generate-questions", async (req, res) => {
+  const material = typeof req.body?.material === "string" ? req.body.material.trim() : "";
+  if (!material || material.length < 100) {
+    return res.status(400).json({
+      error: "material required",
+      hint: "Add at least a few sentences (or notes) to your folder so we can generate questions from it.",
+    });
+  }
+  const key = process.env.OPENAI_API_KEY || process.env.TTS_API_KEY || "";
+  if (!key) return res.status(503).json({ error: "Questions not configured", code: "OPENAI_NOT_CONFIGURED" });
+
+  const truncated = material.length > 12000 ? material.slice(0, 12000) + "\n\n[... truncated ...]" : material;
+  const userContent = `Study material (use this and only this to create questions):\n\n${truncated}`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        messages: [
+          { role: "system", content: GENERATE_QUESTIONS_SYSTEM },
+          { role: "user", content: userContent },
+        ],
+        max_tokens: 1200,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("[generate-questions] OpenAI error:", response.status, err);
+      return res.status(response.status).json({ error: "Failed to generate questions", detail: err });
+    }
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
+    const parsed = (() => {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {
+        return null;
+      }
+    })();
+    if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+      console.error("[generate-questions] Invalid response shape:", raw.slice(0, 200));
+      return res.status(502).json({ error: "Could not parse questions from response" });
+    }
+    const questions = parsed.questions
+      .filter((q) => q && typeof q.question === "string" && Array.isArray(q.keyPoints))
+      .map((q) => ({
+        question: String(q.question).trim(),
+        keyPoints: q.keyPoints.map((p) => String(p).trim()).filter(Boolean),
+      }))
+      .filter((q) => q.question.length > 0 && q.keyPoints.length > 0)
+      .slice(0, 8);
+    if (questions.length === 0) {
+      return res.status(502).json({ error: "No valid questions generated" });
+    }
+    res.json({ questions });
+  } catch (err) {
+    console.error("Generate questions error:", err.message);
+    return res.status(502).json({ error: "Question generation failed", code: "GENERATE_QUESTIONS_ERROR" });
+  }
+});
+
 // ----- Static / SPA -----
 const clientDist = path.join(__dirname, "client", "dist");
 const hasReactBuild = fs.existsSync(clientDist);

@@ -165,7 +165,7 @@ export async function getItem(id) {
   if (!USE_BACKEND) return idb.getItem(id);
   const item = await fetchApi("GET", "/api/items/" + encodeURIComponent(id));
   if (!item) return null;
-  if (item.type === "file" && item.content) {
+  if (item.type === "file") {
     const token = getToken();
     const res = await fetch(API_BASE + "/api/items/" + encodeURIComponent(id) + "/download", {
       headers: token ? { Authorization: "Bearer " + token } : {},
@@ -275,6 +275,29 @@ export async function fetchChat(message, history = []) {
   if (!res.ok) throw new Error("Chat failed");
   const data = await res.json();
   return data.reply ?? "";
+}
+
+/**
+ * Generate practice questions from uploaded material (notes text). Requires backend + OPENAI_API_KEY.
+ * material: combined text from the user's notes in a folder.
+ * Returns { questions: [ { question, keyPoints } ] }.
+ */
+export async function fetchGenerateQuestions(material) {
+  const token = getToken();
+  const res = await fetch(API_BASE + "/api/generate-questions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+    },
+    body: JSON.stringify({ material: String(material).trim() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.hint || data.error || "Could not generate questions";
+    throw new Error(msg);
+  }
+  return data;
 }
 
 export async function getSubfolders(subject) {
