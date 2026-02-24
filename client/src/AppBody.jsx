@@ -255,6 +255,8 @@ export default function AppBody() {
     [saveLastSession]
   );
 
+  const currentQuestion = questions[currentIndex];
+
   useEffect(() => {
     if (sessionRoute !== "think" || !currentQuestion || !questions.length) return;
     const key = `${currentIndex}-${currentQuestion.question}`;
@@ -422,8 +424,6 @@ export default function AppBody() {
     },
     [editingNoteId, closeNoteEditor]
   );
-
-  const currentQuestion = questions[currentIndex];
 
   if (!apiReady) {
     return (
