@@ -294,7 +294,10 @@ export async function fetchGenerateQuestions(material) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = data.hint || data.error || "Could not generate questions";
+    const msg =
+      data.code === "OPENAI_NOT_CONFIGURED"
+        ? "Add OPENAI_API_KEY to your server (e.g. Railway → Project → Variables) so the app can generate questions from your material."
+        : [data.hint, data.error].filter(Boolean).join(" — ") || "Could not generate questions. Try again.";
     throw new Error(msg);
   }
   return data;

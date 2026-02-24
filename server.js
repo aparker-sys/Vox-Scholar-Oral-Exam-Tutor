@@ -467,36 +467,73 @@ app.post("/api/generate-questions", async (req, res) => {
     });
   }
   const key = process.env.OPENAI_API_KEY || process.env.TTS_API_KEY || "";
-  if (!key) return res.status(503).json({ error: "Questions not configured", code: "OPENAI_NOT_CONFIGURED" });
+  if (!key) {
+    return res.status(503).json({
+      error: "Questions not configured",
+      code: "OPENAI_NOT_CONFIGURED",
+      hint: "Add OPENAI_API_KEY to your server environment (e.g. Railway → your project → Variables) so the app can generate questions from your uploaded material.",
+    });
+  }
 
   const truncated = material.length > 12000 ? material.slice(0, 12000) + "\n\n[... truncated ...]" : material;
   const userContent = `Study material (use this and only this to create questions):\n\n${truncated}`;
 
   try {
+    const body = {
+      model: CHAT_MODEL,
+      messages: [
+        { role: "system", content: GENERATE_QUESTIONS_SYSTEM },
+        { role: "user", content: userContent },
+      ],
+      max_tokens: 1200,
+    };
+    // Request JSON output for more reliable parsing (supported by gpt-4o-mini and similar)
+    if (/gpt-4o|gpt-4\.1/g.test(CHAT_MODEL)) {
+      body.response_format = { type: "json_object" };
+    }
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [
-          { role: "system", content: GENERATE_QUESTIONS_SYSTEM },
-          { role: "user", content: userContent },
-        ],
-        max_tokens: 1200,
-      }),
+      body: JSON.stringify(body),
     });
+    const errText = await response.text();
     if (!response.ok) {
-      const err = await response.text();
-      console.error("[generate-questions] OpenAI error:", response.status, err);
-      return res.status(response.status).json({ error: "Failed to generate questions", detail: err });
+      let hint = "Try again in a moment.";
+      try {
+        const errJson = JSON.parse(errText);
+        const msg = errJson.error?.message || errJson.message || errText;
+        if (msg.includes("quota") || msg.includes("insufficient_quota")) {
+          hint = "Your OpenAI account has run out of quota. Add billing or wait before trying again.";
+        } else if (msg.includes("rate") || response.status === 429) {
+          hint = "Too many requests. Wait a minute and try again.";
+        } else if (msg.includes("content") && msg.includes("policy")) {
+          hint = "The material may have triggered a content filter. Try a different reading or shorten it.";
+        } else if (msg.length < 200) {
+          hint = msg;
+        }
+      } catch (_) {}
+      console.error("[generate-questions] OpenAI error:", response.status, errText.slice(0, 300));
+      return res.status(502).json({
+        error: "Failed to generate questions",
+        hint,
+        code: "GENERATE_QUESTIONS_ERROR",
+      });
     }
-    const data = await response.json();
+    const data = JSON.parse(errText);
     const raw = data.choices?.[0]?.message?.content?.trim() || "";
     const parsed = (() => {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      // Prefer raw if it's already valid JSON (e.g. from response_format)
+      try {
+        const j = JSON.parse(raw);
+        if (j && Array.isArray(j.questions)) return j;
+      } catch (_) {}
+      // Otherwise extract from markdown code block or first {...}
+      const codeBlock = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const toParse = codeBlock ? codeBlock[1].trim() : raw;
+      const jsonMatch = toParse.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
       try {
         return JSON.parse(jsonMatch[0]);
@@ -506,23 +543,33 @@ app.post("/api/generate-questions", async (req, res) => {
     })();
     if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
       console.error("[generate-questions] Invalid response shape:", raw.slice(0, 200));
-      return res.status(502).json({ error: "Could not parse questions from response" });
+      return res.status(502).json({
+        error: "Could not parse questions from response",
+        hint: "The AI returned an unexpected format. Try again or use a shorter reading.",
+      });
     }
     const questions = parsed.questions
       .filter((q) => q && typeof q.question === "string" && Array.isArray(q.keyPoints))
       .map((q) => ({
         question: String(q.question).trim(),
-        keyPoints: q.keyPoints.map((p) => String(p).trim()).filter(Boolean),
+        keyPoints: (q.keyPoints || []).map((p) => String(p).trim()).filter(Boolean),
       }))
       .filter((q) => q.question.length > 0 && q.keyPoints.length > 0)
       .slice(0, 8);
     if (questions.length === 0) {
-      return res.status(502).json({ error: "No valid questions generated" });
+      return res.status(502).json({
+        error: "No valid questions generated",
+        hint: "Try again or add more text to your reading.",
+      });
     }
     res.json({ questions });
   } catch (err) {
     console.error("Generate questions error:", err.message);
-    return res.status(502).json({ error: "Question generation failed", code: "GENERATE_QUESTIONS_ERROR" });
+    return res.status(502).json({
+      error: "Question generation failed",
+      hint: err.message || "Try again in a moment.",
+      code: "GENERATE_QUESTIONS_ERROR",
+    });
   }
 });
 
