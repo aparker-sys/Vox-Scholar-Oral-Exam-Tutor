@@ -475,6 +475,7 @@ if (hasReactBuild) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Vox Scholar server at http://localhost:${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+app.listen(PORT, HOST, () => {
+  console.log(`Vox Scholar server at http://${HOST}:${PORT}`);
 });
