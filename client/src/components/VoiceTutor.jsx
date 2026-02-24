@@ -226,5 +226,4 @@ export function VoiceTutor({
   );
 }
 
-export { previewVoice } from "./voiceHooks";
 export default VoiceTutor;

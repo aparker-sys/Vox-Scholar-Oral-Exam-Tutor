@@ -4,6 +4,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: "/",
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("api/client") || id.includes("indexedDb")) return "api";
+          if (id.includes("voiceHooks")) return "voice";
+        },
+      },
+    },
+  },
   resolve: {
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
