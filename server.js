@@ -448,11 +448,19 @@ app.post("/api/chat", async (req, res) => {
 // ----- Static / SPA -----
 const clientDist = path.join(__dirname, "client", "dist");
 const hasReactBuild = fs.existsSync(clientDist);
+console.log("client/dist exists:", hasReactBuild, "path:", clientDist);
+
 if (hasReactBuild) {
   app.use(express.static(clientDist));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();
-    res.sendFile(path.join(clientDist, "index.html"));
+    const indexPath = path.join(clientDist, "index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        console.error("SendFile error:", err.message);
+        res.status(500).send("Error loading app.");
+      }
+    });
   });
 } else {
   const allowedFiles = ["index.html", "styles.css", "app.js", "db.js", "questions.js", "api.js"];
