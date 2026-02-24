@@ -451,9 +451,11 @@ const hasReactBuild = fs.existsSync(clientDist);
 console.log("client/dist exists:", hasReactBuild, "path:", clientDist);
 
 if (hasReactBuild) {
-  app.use(express.static(clientDist));
+  app.use(express.static(clientDist, { index: false }));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();
+    // Don't serve index.html for asset paths; let them 404 so we don't break JS/CSS
+    if (req.path.startsWith("/assets/")) return next();
     const indexPath = path.join(clientDist, "index.html");
     res.sendFile(indexPath, (err) => {
       if (err) {
