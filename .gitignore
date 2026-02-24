@@ -3,4 +3,5 @@ node_modules/
 .env
 .DS_Store
 client/.DS_Store
+client/dist
 *.log
