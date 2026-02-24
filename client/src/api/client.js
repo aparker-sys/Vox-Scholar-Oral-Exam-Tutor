@@ -1,8 +1,8 @@
 import * as idb from "./indexedDb.js";
 
-const API_BASE = "";
-const TOKEN_KEY = "vox_scholar_token";
-const STORAGE_KEYS = {
+var API_BASE = "";
+var TOKEN_KEY = "vox_scholar_token";
+var STORAGE_KEYS = {
   lastSession: "oralExam_lastSession",
   sessionHistory: "oralExam_sessionHistory",
   weakAreas: "oralExam_weakAreas",
@@ -13,9 +13,9 @@ const STORAGE_KEYS = {
   charlotteVoice: "oralExam_charlotteVoice",
 };
 
-let USE_BACKEND = false;
-let AUTH_TOKEN = null;
-const CACHE = {};
+var USE_BACKEND = false;
+var AUTH_TOKEN = null;
+var CACHE = {};
 
 function getToken() {
   if (AUTH_TOKEN) return AUTH_TOKEN;

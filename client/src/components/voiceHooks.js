@@ -5,14 +5,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { loadStorage, STORAGE_KEYS, fetchTTSAudio } from "../api/client";
 
-let cachedPreferredVoice = null;
+var cachedPreferredVoice = null;
 
-const FEMALE_NAME_HINTS = [
+var FEMALE_NAME_HINTS = [
   "samantha", "karen", "victoria", "moira", "tessa", "fiona", "alice", "luciana",
   "linda", "susan", "laura", "zira", "catherine", "claire", "emily", "female",
   "woman", "google uk english female", "microsoft zira", "google us english",
 ];
-const MALE_NAME_HINTS = [
+var MALE_NAME_HINTS = [
   "alex", "daniel", "ralph", "bruce", "fred", "tom", "david", "mark", "paul",
   "male", "man", "google uk english male", "microsoft david",
 ];
@@ -74,7 +74,7 @@ function getPreferredVoice() {
   return cachedPreferredVoice;
 }
 
-let voiceListInited = false;
+var voiceListInited = false;
 export function initVoiceList() {
   if (typeof window === "undefined" || !window.speechSynthesis || voiceListInited) return;
   voiceListInited = true;
@@ -85,8 +85,8 @@ export function initVoiceList() {
   };
 }
 
-const PITCH_VARY = [0.98, 1.0, 1.02, 1.01];
-const RATE_VARY = [0.88, 0.91, 0.89, 0.92];
+var PITCH_VARY = [0.98, 1.0, 1.02, 1.01];
+var RATE_VARY = [0.88, 0.91, 0.89, 0.92];
 
 export function applyNaturalSpeech(u, chunkIndex = 0) {
   const i = chunkIndex % PITCH_VARY.length;
