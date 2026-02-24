@@ -457,6 +457,8 @@ if (hasReactBuild) {
     // Don't serve index.html for asset paths; let them 404 so we don't break JS/CSS
     if (req.path.startsWith("/assets/")) return next();
     const indexPath = path.join(clientDist, "index.html");
+    // Prevent caching of index.html so users always get the latest script URLs after deploy
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.sendFile(indexPath, (err) => {
       if (err) {
         console.error("SendFile error:", err.message);
