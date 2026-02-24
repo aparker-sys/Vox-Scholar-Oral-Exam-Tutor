@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import {
   initBackend,
   loadStorage,
@@ -16,7 +16,6 @@ import {
 } from "./api/client";
 import { QUESTIONS_BY_TOPIC } from "./data/questions.js";
 import { formatTime, escapeHtml, shuffleArray, formatCountdown, getQuickStats } from "./utils";
-import { VoiceTutor } from "./components/VoiceTutor";
 import {
   useVoiceTutor,
   useVoiceOptions,
@@ -24,6 +23,8 @@ import {
   useSessionAnswerRecognition,
   previewVoice,
 } from "./components/voiceHooks";
+
+const VoiceTutor = lazy(() => import("./components/VoiceTutor"));
 
 const ROUTES = ["home", "subjects", "performance", "weak", "settings", "folder", "library"];
 const SESSION_ROUTES = ["think", "answer", "feedback", "complete"];
@@ -477,12 +478,14 @@ export default function App() {
             <section className="home-tile voice-tutor-tile">
               <h2 className="tile-title">Charlotte — your voice tutor</h2>
               <div className="tile-body voice-tutor-tile-body">
-                <VoiceTutor
-                  isSpeaking={isSpeaking}
-                  label="Charlotte, voice tutor"
-                  idleMessage="Tap below to hear Charlotte say hello"
-                  size="medium"
-                />
+                <Suspense fallback={null}>
+                  <VoiceTutor
+                    isSpeaking={isSpeaking}
+                    label="Charlotte, voice tutor"
+                    idleMessage="Tap below to hear Charlotte say hello"
+                    size="medium"
+                  />
+                </Suspense>
                 <div className="voice-tutor-actions">
                   <button
                     type="button"
@@ -984,12 +987,14 @@ export default function App() {
           <section className="screen screen-think screen-session active">
             <p className="phase-label">Charlotte asks</p>
             <div className="session-voice-tutor">
-              <VoiceTutor
-                isSpeaking={isSpeaking}
-                label="Charlotte"
-                idleMessage="Listen for the question"
-                size="small"
-              />
+              <Suspense fallback={null}>
+                <VoiceTutor
+                  isSpeaking={isSpeaking}
+                  label="Charlotte"
+                  idleMessage="Listen for the question"
+                  size="small"
+                />
+              </Suspense>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -1049,7 +1054,9 @@ export default function App() {
           <section className="screen screen-feedback screen-session active">
             <p className="phase-label">Key points to include</p>
             <div className="session-voice-tutor session-voice-tutor--compact">
-              <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear key points" />
+              <Suspense fallback={null}>
+                <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear key points" />
+              </Suspense>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -1093,7 +1100,9 @@ export default function App() {
           <section className="screen screen-complete screen-session active">
             <h2>Session complete</h2>
             <div className="session-voice-tutor session-voice-tutor--compact">
-              <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear summary" />
+              <Suspense fallback={null}>
+                <VoiceTutor isSpeaking={isSpeaking} size="small" idleMessage="Hear summary" />
+              </Suspense>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
